@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Siva Murugan Fancy - Luxury E-commerce">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="FancyWorld">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>FancyWorld Luxury</title>
+  <link rel="manifest" href="manifest.json">
+  <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAO42eETDChqAFDQh2qxy_X88LG6-cnCAw&loading=async"></script>
+
+  <style>
+    body {
+      background-color: #050505;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      font-family: serif;
+    }
+    .loader {
+      border: 3px solid #1a1a1a;
+      border-top: 3px solid #D4AF37;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="loader"></div>
+  </div>
+
+  <script>
+    window.addEventListener('load', function(ev) {
+      // Clean up loader after app finishes loading
+      var loading = document.querySelector('#loading');
+      if (loading) {
+        // We'll let Flutter remove it or hide it via its own logic
+      }
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
