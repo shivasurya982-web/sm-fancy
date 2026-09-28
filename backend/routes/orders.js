@@ -6,6 +6,7 @@ const User = require('../models/User');
 const Product = require('../models/Product');
 const { verifyToken, requireAdmin } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
+const { recordOrderSale } = require('../services/analyticsService');
 
 // POST /api/orders
 router.post('/', verifyToken, async (req, res) => {
@@ -72,16 +73,20 @@ router.post('/', verifyToken, async (req, res) => {
       total,
       customerLiveLocation,
       status: 'Placed',
+      paymentStatus: (paymentMethod === 'COD') ? 'Pending' : 'Pending', // COD is naturally pending, UPI is now handled by payments router
       timeline: [
         {
           status: 'Placed',
-          message: 'Order placed successfully',
+          message: (paymentMethod === 'COD') ? 'Order placed via Cash on Delivery' : 'Order placed',
           isCompleted: true,
         },
       ],
     });
 
     await order.save();
+
+    // Record for persistent analytics (decoupled from order history)
+    await recordOrderSale(order);
 
     // 3. Decrease Stock (Atomic check-and-decrement would be better, but this is a solid improvement)
     for (const item of items) {
@@ -97,10 +102,11 @@ router.post('/', verifyToken, async (req, res) => {
     });
 
     // Create Notification
+    const productNames = items.map(i => i.name).join(', ');
     await createNotification(req.app, {
       userId: req.userId,
       title: 'Order Placed!',
-      body: `Your order #${order.orderNumber} has been successfully placed.`,
+      body: `Your purchase of ${productNames} has been successfully placed.`,
       type: 'order',
       data: { orderId: order._id }
     });
@@ -181,10 +187,11 @@ router.put('/admin/:id/status', verifyToken, requireAdmin, async (req, res) => {
     await order.save();
 
     // Create Status Update Notification
+    const productNames = order.items.map(i => i.name).join(', ');
     await createNotification(req.app, {
         userId: order.userId,
         title: `Order ${status}!`,
-        body: `Your order #${order.orderNumber} is now ${status.toLowerCase()}.`,
+        body: `Your purchase of ${productNames} is now ${status.toLowerCase()}.`,
         type: 'order',
         data: { orderId: order._id, status }
     });

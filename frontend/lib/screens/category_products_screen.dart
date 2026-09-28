@@ -73,23 +73,30 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                   ? const Center(child: CircularProgressIndicator(color: AppTheme.brushedPlatinum))
                   : _products.isEmpty
                       ? _buildEmptyState()
-                      : GridView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
-                          itemCount: _products.length,
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 0.64,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                          ),
-                          itemBuilder: (ctx, idx) {
-                            return ProductCard(
-                              product: _products[idx],
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => ProductDetailsScreen(product: _products[idx])),
+                      : Builder(
+                          builder: (context) {
+                            final double screenWidth = MediaQuery.of(context).size.width;
+                            final int crossAxisCount = screenWidth > 600 ? 3 : 2;
+                            final double aspectRatio = screenWidth < 360 ? 0.58 : 0.64;
+                            return GridView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
+                              itemCount: _products.length,
+                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossAxisCount,
+                                childAspectRatio: aspectRatio,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
                               ),
-                            ).animate().fadeIn(delay: (idx % 10 * 50).ms).scale(begin: const Offset(0.95, 0.95), curve: Curves.easeOut);
+                              itemBuilder: (ctx, idx) {
+                                return ProductCard(
+                                  product: _products[idx],
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => ProductDetailsScreen(product: _products[idx])),
+                                  ),
+                                ).animate().fadeIn(delay: (idx % 10 * 50).ms).scale(begin: const Offset(0.95, 0.95), curve: Curves.easeOut);
+                              },
+                            );
                           },
                         ),
             ),

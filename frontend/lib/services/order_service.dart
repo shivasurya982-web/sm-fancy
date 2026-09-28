@@ -84,6 +84,11 @@ class OrderService {
     return updated;
   }
 
+  static Future<OrderItem> getOrderById(String id) async {
+    final response = await ApiService.get('/orders/$id');
+    return OrderItem.fromJson(response);
+  }
+
   static Future<void> deleteOrder(String orderId) async {
     await ApiService.delete('/orders/$orderId');
     orders.removeWhere((o) => o.orderId == orderId);

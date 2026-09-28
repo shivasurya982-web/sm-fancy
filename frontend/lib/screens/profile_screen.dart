@@ -13,6 +13,7 @@ import '../widgets/gold_button.dart';
 import 'login_screen.dart';
 import 'address_screen.dart';
 import 'complaints_screen.dart';
+import 'user_chat_redirect.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -152,16 +153,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       .headlineLarge
                       ?.copyWith(fontSize: 22, letterSpacing: 1.5)),
               const SizedBox(height: 40),
-              _buildRegisterStyleField('FULL NAME', nameEdit, hint: 'e.g. John Doe'),
+              _buildRegisterStyleField('FULL NAME', nameEdit, hint: 'ENTER YOUR NAME'),
               const SizedBox(height: 24),
               _buildRegisterStyleField('EMAIL ADDRESS', _emailController,
-                  hint: 'john@example.com', enabled: false),
+                  hint: 'ENTER YOUR EMAIL', enabled: false),
               const SizedBox(height: 24),
               _buildRegisterStyleField('PHONE NUMBER', phoneEdit,
-                  hint: 'Enter your phone', keyboard: TextInputType.phone),
+                  hint: 'ENTER YOUR PHONE', keyboard: TextInputType.phone),
               const SizedBox(height: 24),
               _buildRegisterStyleField('RECOVERY HINT', hintEdit,
-                  hint: 'Security answer'),
+                  hint: 'ENTER RECOVERY HINT'),
               const SizedBox(height: 48),
               GoldButton(
                 label: 'SAVE CHANGES',
@@ -326,7 +327,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildMenuCard([
                       _buildMenuTile(Icons.map_outlined, 'Saved Addresses', () {
                         Navigator.push(context,
-                            MaterialPageRoute(builder: (_) => const AddressScreen()));
+                            MaterialPageRoute(builder: (_) => AddressScreen()));
                       }),
                     ]),
                     const SizedBox(height: 32),
@@ -350,6 +351,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildSectionTitle('CONCIERGE'),
                     const SizedBox(height: 16),
                     _buildMenuCard([
+                      _buildMenuTile(Icons.chat_bubble_outline_rounded, 'Chat with Maison', () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const UserChatRedirect()));
+                      }),
+                      const Divider(color: AppTheme.glassBorder, height: 1, indent: 20, endIndent: 20),
                       _buildMenuTile(Icons.help_outline_rounded, 'Help & Support', () {
                         Navigator.push(
                             context,
@@ -394,7 +402,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: _profileImagePath != null &&
                             _profileImagePath!.isNotEmpty
                         ? CachedNetworkImage(
-                            imageUrl: _profileImagePath!, fit: BoxFit.cover)
+                            imageUrl: _profileImagePath!, 
+                            fit: BoxFit.cover,
+                            width: 70,
+                            height: 70,
+                            placeholder: (ctx, url) => const CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brushedPlatinum),
+                          )
                         : const Icon(Icons.person_outline_rounded,
                             color: AppTheme.coolGrey, size: 28),
                   ),
@@ -504,7 +517,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           await AuthService.logout();
           if (mounted)
             Navigator.pushAndRemoveUntil(context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+                MaterialPageRoute(builder: (_) => LoginScreen()), (_) => false);
         },
         style: OutlinedButton.styleFrom(
           foregroundColor: AppTheme.brushedPlatinum,

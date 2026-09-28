@@ -99,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Category Filter
     if (_selectedCategory != 'All') {
-      filtered = filtered.where((p) => p.category == _selectedCategory).toList();
+      filtered = filtered.where((p) => p.category.trim().toLowerCase() == _selectedCategory.trim().toLowerCase()).toList();
     }
     
     // Price Filter
@@ -145,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: AppTheme.matteBlack,
         child: CustomScrollView(
           slivers: [
-            const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            const SliverToBoxAdapter(child: SizedBox(height: 10)),
 
             // 1. Search Bar (Same Page Logic)
             SliverPadding(
@@ -227,7 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const Spacer(),
                     if (_searchController.text.isEmpty)
                       GestureDetector(
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoriesScreen())),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CategoriesScreen())),
                         child: Text('VIEW ALL', style: TextStyle(color: AppTheme.brushedPlatinum, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
                       ),
                     const SizedBox(width: 12),
@@ -243,16 +243,19 @@ class _HomeScreenState extends State<HomeScreen> {
                            backgroundColor: Colors.transparent,
                            isScrollControlled: true,
                            builder: (ctx) => StatefulBuilder(
-                             builder: (context, setSheetState) => Container(
-                               padding: const EdgeInsets.all(32),
+                             builder: (context, setSheetState) => DraggableScrollableSheet(
+                               initialChildSize: 0.75,
+                               minChildSize: 0.4,
+                               maxChildSize: 0.95,
+                               builder: (_, scrollController) => Container(
+                               padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
                                decoration: BoxDecoration(
                                  color: AppTheme.deepCharcoal,
                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
                                  border: Border.all(color: AppTheme.glassBorder),
                                ),
-                               child: Column(
-                                 mainAxisSize: MainAxisSize.min,
-                                 crossAxisAlignment: CrossAxisAlignment.start,
+                               child: ListView(
+                                 controller: scrollController,
                                  children: [
                                    Row(
                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -341,7 +344,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                ),
                              ),
                            ),
-                         );
+                         ),
+                       );
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -402,26 +406,48 @@ class _HomeScreenState extends State<HomeScreen> {
               sliver: _isLoading
                   ? const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: AppTheme.brushedPlatinum)))
                   : _filteredProducts.isEmpty
-                  ? const SliverFillRemaining(child: Center(child: Text('NO ITEMS FOUND', style: TextStyle(color: AppTheme.coolGrey, fontWeight: FontWeight.w900, letterSpacing: 2))))
-                  : SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        childAspectRatio: 0.64,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                        (ctx, idx) {
-                          return ProductCard(
-                            product: _filteredProducts[idx],
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => ProductDetailsScreen(product: _filteredProducts[idx])),
+                  ? SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text('NO ITEMS FOUND', style: TextStyle(color: AppTheme.coolGrey, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                            const SizedBox(height: 16),
+                            TextButton.icon(
+                              onPressed: () => _loadData(forceRefresh: true),
+                              icon: const Icon(Icons.refresh_rounded, color: AppTheme.brushedPlatinum, size: 18),
+                              label: const Text('RELOAD LIVE DATA', style: TextStyle(color: AppTheme.brushedPlatinum, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)),
                             ),
-                          ).animate().fadeIn(duration: 400.ms, delay: (idx % 4 * 100).ms).scale(begin: const Offset(0.95, 0.95), curve: Curves.easeOut);
-                        },
-                        childCount: _filteredProducts.length,
+                          ],
+                        ),
                       ),
+                    )
+                  : Builder(
+                      builder: (context) {
+                        final double screenWidth = MediaQuery.of(context).size.width;
+                        final int crossAxisCount = screenWidth > 600 ? 3 : 2;
+                        final double aspectRatio = screenWidth < 360 ? 0.58 : 0.64;
+                        return SliverGrid(
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
+                            childAspectRatio: aspectRatio,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                            (ctx, idx) {
+                              return ProductCard(
+                                product: _filteredProducts[idx],
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => ProductDetailsScreen(product: _filteredProducts[idx])),
+                                ),
+                              ).animate().fadeIn(duration: 400.ms, delay: (idx % 4 * 100).ms).scale(begin: const Offset(0.95, 0.95), curve: Curves.easeOut);
+                            },
+                            childCount: _filteredProducts.length,
+                          ),
+                        );
+                      },
                     ),
             ),
           ],

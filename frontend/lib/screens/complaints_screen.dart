@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../services/api_service.dart';
 import '../config/theme.dart';
+import '../widgets/gold_button.dart';
 
 class ComplaintsScreen extends StatefulWidget {
   const ComplaintsScreen({super.key});
@@ -16,7 +17,10 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
   bool _isSending = false;
 
   Future<void> _handleSubmit() async {
-      if (_subjectController.text.isEmpty || _messageController.text.isEmpty) return;
+      if (_subjectController.text.isEmpty || _messageController.text.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields.'), backgroundColor: AppTheme.error));
+          return;
+      }
       setState(() => _isSending = true);
       try {
           await ApiService.post('/complaints', {
@@ -60,52 +64,56 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
                   const SizedBox(height: 40),
                   
                   Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: AppTheme.premiumCard(radius: 24),
+                      padding: const EdgeInsets.all(28),
+                      decoration: AppTheme.premiumCard(radius: 32),
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                              Text('SUBJECT', style: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 8, color: Colors.white70)),
+                              _buildLabel('SUBJECT'),
                               const SizedBox(height: 12),
                               TextField(
                                   controller: _subjectController,
-                                  style: const TextStyle(fontSize: 14, color: AppTheme.polishedSilver, fontWeight: FontWeight.bold),
+                                  style: const TextStyle(fontSize: 14, color: AppTheme.polishedSilver, fontWeight: FontWeight.w600),
                                   decoration: InputDecoration(
                                       hintText: 'Inquiry, Issue, etc.',
                                       hintStyle: const TextStyle(color: Colors.white24),
                                       filled: true,
                                       fillColor: Colors.white.withOpacity(0.03),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(100), borderSide: const BorderSide(color: AppTheme.glassBorder)),
+                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(100), borderSide: const BorderSide(color: AppTheme.glassBorder)),
+                                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(100), borderSide: const BorderSide(color: AppTheme.brushedPlatinum, width: 1.2)),
                                   ),
                               ),
-                              const SizedBox(height: 24),
-                              Text('MESSAGE', style: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 8, color: Colors.white70)),
+                              const SizedBox(height: 32),
+                              _buildLabel('MESSAGE'),
                               const SizedBox(height: 12),
                               TextField(
                                   controller: _messageController,
-                                  maxLines: 5,
+                                  maxLines: 6,
                                   style: const TextStyle(fontSize: 14, color: AppTheme.polishedSilver, height: 1.5),
                                   decoration: InputDecoration(
                                       hintText: 'Please detail your request...',
                                       hintStyle: const TextStyle(color: Colors.white24),
                                       filled: true,
                                       fillColor: Colors.white.withOpacity(0.03),
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppTheme.glassBorder)),
+                                      contentPadding: const EdgeInsets.all(24),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: AppTheme.glassBorder)),
+                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: AppTheme.glassBorder)),
+                                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: AppTheme.brushedPlatinum, width: 1.2)),
                                   ),
                               ),
                           ],
                       ),
-                  ).animate().fadeIn().scale(begin: const Offset(0.98, 0.98)),
+                  ).animate().fadeIn().slideY(begin: 0.05, end: 0),
                   
                   const SizedBox(height: 48),
-                  SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton(
-                          onPressed: _isSending ? null : _handleSubmit,
-                          child: _isSending ? const CircularProgressIndicator(strokeWidth: 2, color: Colors.black) : const Text('SUBMIT'),
-                      ),
+                  GoldButton(
+                      label: 'SUBMIT MESSAGE',
+                      onPressed: _isSending ? null : _handleSubmit,
+                      isLoading: _isSending,
                   ),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
@@ -113,5 +121,12 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildLabel(String text) {
+      return Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Text(text, style: const TextStyle(color: Colors.white60, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 2)),
+      );
   }
 }

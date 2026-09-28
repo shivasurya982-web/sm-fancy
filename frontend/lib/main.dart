@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'config/theme.dart';
 import 'services/api_service.dart';
 import 'services/wishlist_service.dart';
@@ -7,13 +8,25 @@ import 'services/cart_service.dart';
 import 'services/category_service.dart';
 import 'services/product_service.dart';
 import 'services/notification_service.dart';
+import 'services/local_notification_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'screens/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Handle font loading issues on some networks/browsers gracefully
+  if (kIsWeb) {
+    debugPrint('Running in Web mode - skipping native-only services');
+  }
+
   debugPrint('FancyWorld Luxury: Initializing Services...');
   await ApiService.init();
+  await LocalNotificationService.init();
+  
+  if (!kIsWeb) {
+    await Permission.notification.request();
+  }
   
   // High-performance background hydration. 
   _hydrateData();

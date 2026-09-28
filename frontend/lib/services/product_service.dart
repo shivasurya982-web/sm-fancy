@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'package:flutter/foundation.dart';
 import '../models/product_model.dart';
 import 'api_service.dart';
@@ -35,8 +34,12 @@ class ProductService {
       results = response.map((json) => ProductModel.fromJson(json)).toList();
     }
 
-    if (search == null && category == null) { _cachedAllProducts = results; _lastFetchTime = DateTime.now(); }
-    else if (category != null && search == null) { _cachedByCategory[category] = results; }
+    if (search == null && category == null && excludeId == null) { 
+      _cachedAllProducts = results; 
+      _lastFetchTime = DateTime.now(); 
+    } else if (category != null && search == null && excludeId == null) { 
+      _cachedByCategory[category] = results; 
+    }
     return results;
   }
 
@@ -162,5 +165,9 @@ class ProductService {
   }
 
   static Future<void> deleteProduct(String id) async { await ApiService.delete('/products/$id'); _cachedAllProducts.clear(); }
-  static Future<ProductModel> getProductById(String id) async { final response = await ApiService.get('/products/$id'); return ProductModel.fromJson(response); }
+  
+  static Future<ProductModel> getProductById(String id) async {
+    final response = await ApiService.get('/products/$id');
+    return ProductModel.fromJson(response);
+  }
 }

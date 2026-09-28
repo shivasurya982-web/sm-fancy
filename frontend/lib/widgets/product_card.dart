@@ -48,8 +48,8 @@ class _ProductCardState extends State<ProductCard> with SingleTickerProviderStat
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.deepCharcoal,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: AppTheme.platinumBorder)),
-        title: Text('PRIVATE ACCESS', style: Theme.of(context).textTheme.labelSmall),
-        content: const Text('Please authenticate to interact with this collection.', style: TextStyle(color: AppTheme.coolGrey)),
+        title: Text('LOGIN REQUIRED', style: Theme.of(context).textTheme.labelSmall),
+        content: const Text('Please login to explore more.', style: TextStyle(color: AppTheme.coolGrey)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -117,7 +117,6 @@ class _ProductCardState extends State<ProductCard> with SingleTickerProviderStat
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () async {
-                        if (!_checkAuth()) return;
                         if (isLiked) {
                           await WishlistService.removeFromWishlist(product.id);
                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed from Wishlist'), duration: Duration(seconds: 1)));
@@ -172,19 +171,22 @@ class _ProductCardState extends State<ProductCard> with SingleTickerProviderStat
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '₹${product.price.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w300,
-                          fontSize: 14,
+                      Expanded(
+                        child: Text(
+                          '₹${product.price.toStringAsFixed(0)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w300,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                       
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () async {
-                          if (!_checkAuth()) return;
                           if (_isAdding) return;
                           _animController.forward().then((_) => _animController.reverse());
                           setState(() => _isAdding = true);

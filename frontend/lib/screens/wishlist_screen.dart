@@ -50,17 +50,24 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     if (items.isEmpty) {
                       return _buildEmptyState(context);
                     }
-                    return GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
-                      itemCount: items.length,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        childAspectRatio: 0.62,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 24,
-                      ),
-                      itemBuilder: (context, index) {
-                        return _buildWishlistCard(items[index]);
+                    return Builder(
+                      builder: (context) {
+                        final double screenWidth = MediaQuery.of(context).size.width;
+                        final int crossAxisCount = screenWidth > 600 ? 3 : 2;
+                        final double aspectRatio = screenWidth < 360 ? 0.56 : 0.62;
+                        return GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
+                          itemCount: items.length,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
+                            childAspectRatio: aspectRatio,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 24,
+                          ),
+                          itemBuilder: (context, index) {
+                            return _buildWishlistCard(items[index]);
+                          },
+                        );
                       },
                     );
                   },

@@ -14,7 +14,7 @@ import '../config/theme.dart';
 import '../widgets/gold_button.dart';
 import '../widgets/product_card.dart';
 import 'checkout_screen.dart';
-import 'welcome_screen.dart';
+import 'login_screen.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   final ProductModel product;
@@ -83,9 +83,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
             side: const BorderSide(color: AppTheme.platinumBorder)),
-        title:
-            const Text('LOGIN REQUIRED', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 1)),
-        content: const Text('Please log in to continue.',
+        title: const Text('LOGIN REQUIRED', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 1)),
+        content: const Text('Please login to explore more.',
             style: TextStyle(color: AppTheme.coolGrey)),
         actions: [
           TextButton(
@@ -96,7 +95,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             onPressed: () {
               Navigator.pop(ctx);
               Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (_) => const WelcomeScreen()));
+                  MaterialPageRoute(builder: (_) => LoginScreen()));
             },
             child: const Text('LOG IN'),
           ),
@@ -109,7 +108,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
     final bool isWide = screenWidth > 900;
-    
+
     return Scaffold(
       backgroundColor: AppTheme.deepCharcoal,
       body: Container(
@@ -119,14 +118,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
-  // --- WIDE LAYOUT (DESKTOP/TABLET) ---
   Widget _buildWideLayout() {
     final p = widget.product;
     final isLiked = WishlistService.isWishlisted(p.id);
 
     return Column(
       children: [
-        // App Bar Style Header for Wide
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 10),
@@ -137,7 +134,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 _buildCircularBtn(
                   isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                   () async {
-                    if (!_checkAuth()) return;
                     if (isLiked) await WishlistService.removeFromWishlist(p.id);
                     else await WishlistService.addToWishlist(WishlistItem(productId: p.id, name: p.name, image: p.image, price: p.price));
                     setState(() {});
@@ -148,7 +144,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             ),
           ),
         ),
-        
+
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -157,7 +153,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Left: Image Gallery
                     Expanded(
                       flex: 1,
                       child: Container(
@@ -190,7 +185,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       ),
                     ),
                     const SizedBox(width: 48),
-                    // Right: Details
                     Expanded(
                       flex: 1,
                       child: Column(
@@ -217,7 +211,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
-  // --- MOBILE LAYOUT ---
   Widget _buildMobileLayout() {
     final p = widget.product;
     final isLiked = WishlistService.isWishlisted(p.id);
@@ -225,7 +218,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     return CustomScrollView(
       slivers: [
         SliverAppBar(
-          expandedHeight: 400,
+          expandedHeight: 320,
           pinned: true,
           stretch: true,
           backgroundColor: Colors.transparent,
@@ -271,7 +264,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             ),
           ),
         ),
-
         SliverToBoxAdapter(
           child: Transform.translate(
             offset: const Offset(0, -30),
@@ -286,11 +278,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildHeaderSection(),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 32),
                   _buildDescriptionAndSpecs(),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 32),
                   _buildPurchaseSection(),
-                  const SizedBox(height: 60),
+                  const SizedBox(height: 48),
                   _buildRelatedProductsSection(),
                   const SizedBox(height: 100),
                 ],
@@ -302,8 +294,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
-  // --- REUSABLE COMPONENTS ---
-
   Widget _buildHeaderSection() {
     final p = widget.product;
     return Column(
@@ -313,13 +303,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
-              child: Text(p.name.toUpperCase(), style: GoogleFonts.playfairDisplay(fontSize: 28, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver, letterSpacing: 1, height: 1.1)),
+              child: Text(p.name.toUpperCase(), style: GoogleFonts.playfairDisplay(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver, letterSpacing: 1, height: 1.1)),
             ),
             const SizedBox(width: 16),
-            Text('₹${p.price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w300, color: AppTheme.brushedPlatinum, letterSpacing: -0.5)),
+            Text('₹${p.price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w300, color: AppTheme.brushedPlatinum, letterSpacing: -0.5)),
           ],
         ),
       ],
@@ -338,21 +328,19 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       children: [
         if (p.description.isNotEmpty) ...[
           const Text('DESCRIPTION', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
-          const SizedBox(height: 16),
-          Text(p.description, style: const TextStyle(color: AppTheme.coolGrey, height: 1.6, fontSize: 14)),
+          const SizedBox(height: 12),
+          Text(p.description, style: const TextStyle(color: AppTheme.coolGrey, height: 1.5, fontSize: 13)),
         ],
         if (hasSpecs) ...[
-          const SizedBox(height: 40),
-          const Divider(color: AppTheme.glassBorder, thickness: 1),
           const SizedBox(height: 32),
-          const Text('SPECIFICATIONS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+          const Divider(color: AppTheme.glassBorder, thickness: 1),
           const SizedBox(height: 24),
+          const Text('SPECIFICATIONS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+          const SizedBox(height: 16),
           if (p.metalType != null && p.metalType!.isNotEmpty) _buildSpecRow('METAL', p.metalType!),
           if (p.purity != null && p.purity!.isNotEmpty) _buildSpecRow('PURITY', p.purity!),
           if (p.weight != null && p.weight!.isNotEmpty) _buildSpecRow('WEIGHT', p.weight!),
           if (p.stoneInfo != null && p.stoneInfo!.isNotEmpty) _buildSpecRow('STONES', p.stoneInfo!),
-          if (p.hallmark != null && p.hallmark!.isNotEmpty) _buildSpecRow('HALLMARK', p.hallmark!),
-          if (p.certification != null && p.certification!.isNotEmpty) _buildSpecRow('CERTIFICATE', p.certification!),
         ],
       ],
     );
@@ -367,25 +355,25 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const Text('QUANTITY', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('QUANTITY', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                const SizedBox(height: 12),
+                _buildQtyPicker(),
+              ],
+            ),
             Text('${p.stock} IN STOCK', style: const TextStyle(color: AppTheme.success, fontSize: 10, fontWeight: FontWeight.w900)),
           ],
         ),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            _buildQtyPicker(),
-            const Spacer(),
-          ],
-        ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 32),
         Row(
           children: [
             Expanded(
-              flex: 2,
+              flex: 1,
               child: _buildActionBtn('ADD TO CART', () async {
-                if (!_checkAuth()) return;
                 setState(() => _isAdding = true);
                 await CartService.addToCart(p, quantity: _selectedQty);
                 if (mounted) {
@@ -396,13 +384,17 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              flex: 3,
+              flex: 1,
               child: GoldButton(
+                height: 54,
                 label: 'BUY NOW',
                 onPressed: () {
-                  if (!_checkAuth()) return;
+                  if (!ApiService.isLoggedIn) {
+                    _showLoginPrompt();
+                    return;
+                  }
                   CartService.addToCart(p, quantity: _selectedQty);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const CheckoutScreen()));
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => CheckoutScreen()));
                 },
               ),
             ),
@@ -420,31 +412,35 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Divider(color: AppTheme.glassBorder, thickness: 1),
-        const SizedBox(height: 48),
+        const SizedBox(height: 32),
         const Text('MORE FROM THIS CATEGORY', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2.5)),
         const SizedBox(height: 12),
-        Text('More ${widget.product.category}', style: GoogleFonts.playfairDisplay(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver)),
-        const SizedBox(height: 32),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _relatedProducts.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.64,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-          ),
-          itemBuilder: (ctx, idx) => ProductCard(
-            product: _relatedProducts[idx],
-            onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ProductDetailsScreen(product: _relatedProducts[idx]))),
-          ).animate().fadeIn(delay: (idx * 50).ms),
+        Text('More ${widget.product.category}', style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver)),
+        const SizedBox(height: 24),
+        Builder(
+          builder: (context) {
+            final double screenWidth = MediaQuery.of(context).size.width;
+            final double aspectRatio = screenWidth < 360 ? 0.58 : 0.64;
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _relatedProducts.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: screenWidth > 600 ? 3 : 2,
+                childAspectRatio: aspectRatio,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+              ),
+              itemBuilder: (ctx, idx) => ProductCard(
+                product: _relatedProducts[idx],
+                onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ProductDetailsScreen(product: _relatedProducts[idx]))),
+              ).animate().fadeIn(delay: (idx * 50).ms),
+            );
+          },
         ),
       ],
     );
   }
-
-  // --- HELPER WIDGETS ---
 
   Widget _buildCircularBtn(IconData icon, VoidCallback onTap, {double size = 20, Color? color}) {
     return ClipRRect(
@@ -477,12 +473,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   Widget _buildSpecRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: AppTheme.coolGrey, fontSize: 10, letterSpacing: 1)),
-          Text(value.toUpperCase(), style: const TextStyle(color: AppTheme.polishedSilver, fontSize: 12, fontWeight: FontWeight.bold)),
+          Text(value.toUpperCase(), style: const TextStyle(color: AppTheme.polishedSilver, fontSize: 11, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -498,7 +494,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   Widget _buildQtyPicker() {
     return Container(
-      width: 140, padding: const EdgeInsets.all(4),
+      width: 120,
+      padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), border: Border.all(color: AppTheme.glassBorder, width: 1), color: Colors.white.withOpacity(0.05)),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -519,16 +516,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
-            height: 64,
+            height: 54,
             decoration: BoxDecoration(
               color: isGlass ? Colors.white.withOpacity(0.08) : AppTheme.brushedPlatinum,
               borderRadius: BorderRadius.circular(100),
               border: Border.all(color: AppTheme.glassBorder, width: 1),
             ),
             alignment: Alignment.center,
-            child: _isAdding && isGlass 
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 1, color: Colors.white)) 
-              : Text(label, style: TextStyle(color: isGlass ? Colors.white : Colors.black, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+            child: _isAdding && isGlass
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 1, color: Colors.white))
+                : Text(label, style: TextStyle(color: isGlass ? Colors.white : Colors.black, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
           ),
         ),
       ),

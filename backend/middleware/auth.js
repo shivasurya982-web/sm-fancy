@@ -16,6 +16,12 @@ const verifyToken = async (req, res, next) => {
     req.userId = decoded.id;
     req.userRole = decoded.role;
 
+    // Check if user is suspended
+    const user = await User.findById(req.userId);
+    if (user && user.isSuspended) {
+        return res.status(403).json({ message: 'ACCOUNT SUSPENDED. Please contact admin.' });
+    }
+
     next();
   } catch (err) {
     return res.status(401).json({

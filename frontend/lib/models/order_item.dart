@@ -36,6 +36,8 @@ class OrderItem {
   String status;
   final Map<String, String> shippingAddress;
   final String paymentMethod;
+  final String? paymentStatus;
+  final String? upiTransactionId;
   final DateTime date;
   final String customerName;
   final Map<String, double>? customerLiveLocation;
@@ -50,6 +52,8 @@ class OrderItem {
     required this.status,
     required this.shippingAddress,
     required this.paymentMethod,
+    this.paymentStatus,
+    this.upiTransactionId,
     required this.date,
     this.customerName = '',
     this.customerLiveLocation,
@@ -74,7 +78,7 @@ class OrderItem {
           '',
       'city': addrJson['city']?.toString() ?? '',
       'state': addrJson['state']?.toString() ?? '',
-      'zipCode':
+      'pincode':
           addrJson['pincode']?.toString() ??
           addrJson['zipCode']?.toString() ??
           '',
@@ -117,6 +121,8 @@ class OrderItem {
       status: json['status']?.toString() ?? 'Placed',
       shippingAddress: address,
       paymentMethod: json['paymentMethod']?.toString() ?? 'Cash on Delivery',
+      paymentStatus: json['paymentStatus']?.toString(),
+      upiTransactionId: json['upiTransactionId']?.toString() ?? json['upiReferenceNo']?.toString(),
       date: createdDate,
       customerName: custName,
       customerLiveLocation: liveLocation,

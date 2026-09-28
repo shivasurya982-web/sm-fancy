@@ -15,6 +15,7 @@ class SplashConfigScreen extends StatefulWidget {
 class _SplashConfigScreenState extends State<SplashConfigScreen> {
   final _taglineController = TextEditingController();
   final _upiIdController = TextEditingController();
+  final _ownerPhoneController = TextEditingController();
   final _localCityController = TextEditingController();
   final _localFeeController = TextEditingController();
   final _standardFeeController = TextEditingController();
@@ -36,6 +37,7 @@ class _SplashConfigScreenState extends State<SplashConfigScreen> {
       setState(() {
         _taglineController.text = settings['splashTagline'] ?? '';
         _upiIdController.text = settings['upiId'] ?? '';
+        _ownerPhoneController.text = settings['ownerPhone'] ?? '9443039600';
         _localCityController.text = settings['localCity'] ?? '';
         _localFeeController.text = (settings['localShippingFee'] ?? 0.0).toString();
         _standardFeeController.text = (settings['standardShippingFee'] ?? 0.0).toString();
@@ -53,6 +55,7 @@ class _SplashConfigScreenState extends State<SplashConfigScreen> {
       await SettingsService.updateSettings({
         'splashTagline': _taglineController.text.trim(),
         'upiId': _upiIdController.text.trim(),
+        'ownerPhone': _ownerPhoneController.text.trim(),
         'upiQrCode': _upiQrUrl,
         'localCity': _localCityController.text.trim(),
         'localShippingFee': double.tryParse(_localFeeController.text) ?? 0.0,
@@ -95,6 +98,8 @@ class _SplashConfigScreenState extends State<SplashConfigScreen> {
                     _buildHeader('GENERAL SETTINGS'),
                     const SizedBox(height: 24),
                     _buildInput('SPLASH TAGLINE', _taglineController),
+                    const SizedBox(height: 16),
+                    _buildInput('CONTACT PHONE', _ownerPhoneController, numeric: true),
                     const SizedBox(height: 16),
                     _buildInput('UPI ID', _upiIdController),
                     const SizedBox(height: 32),

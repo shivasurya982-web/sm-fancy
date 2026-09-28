@@ -11,13 +11,13 @@ const seedData = async () => {
     let adminUser;
     if (adminCount === 0) {
       adminUser = new User({
-        name: 'Store Owner',
+        name: 'Maison Admin',
         email: 'admin@fancyworld.com',
-        password: 'admin',
+        password: 'admin123',
         role: 'admin',
       });
       await adminUser.save();
-      console.log('Seeded admin user: admin@fancyworld.com / admin');
+      console.log('✅ Admin Account Recovered: admin@fancyworld.com / admin123');
     } else {
       adminUser = await User.findOne({ role: 'admin' });
     }
@@ -109,7 +109,7 @@ const seedData = async () => {
       if (products.length >= 2) {
         // Order 1 (Delivered)
         const order1 = new Order({
-          user: customerUser._id,
+          userId: customerUser._id,
           items: [
             {
               product: products[0]._id,
@@ -134,7 +134,7 @@ const seedData = async () => {
             street: '12, Murugan Temple St',
             city: 'Tiruchendur',
             state: 'Tamil Nadu',
-            zipCode: '628215',
+            pincode: '628215',
           },
           paymentMethod: 'UPI',
           createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
@@ -143,7 +143,7 @@ const seedData = async () => {
 
         // Order 2 (Shipped)
         const order2 = new Order({
-          user: customerUser._id,
+          userId: customerUser._id,
           items: [
             {
               product: products[1]._id,
@@ -162,7 +162,7 @@ const seedData = async () => {
             street: '12, Murugan Temple St',
             city: 'Tiruchendur',
             state: 'Tamil Nadu',
-            zipCode: '628215',
+            pincode: '628215',
           },
           paymentMethod: 'Cash on Delivery',
           createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
@@ -171,7 +171,7 @@ const seedData = async () => {
 
         // Order 3 (Placed)
         const order3 = new Order({
-          user: customerUser._id,
+          userId: customerUser._id,
           items: [
             {
               product: products[0]._id,
@@ -190,7 +190,7 @@ const seedData = async () => {
             street: '12, Murugan Temple St',
             city: 'Tiruchendur',
             state: 'Tamil Nadu',
-            zipCode: '628215',
+            pincode: '628215',
           },
           paymentMethod: 'Credit Card',
           createdAt: new Date(), // Today

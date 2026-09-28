@@ -35,16 +35,18 @@ const orderSchema = new mongoose.Schema(
     // Payment
     paymentMethod: {
       type: String,
-      enum: ['COD', 'UPI', 'Card', 'Wallet', 'Razorpay'],
+      enum: ['COD', 'UPI', 'Card', 'Wallet'],
       default: 'COD',
     },
     paymentStatus: {
       type: String,
-      enum: ['Pending', 'Paid', 'Failed', 'Refunded'],
+      enum: ['Pending', 'Awaiting Verification', 'Paid', 'Failed', 'Refunded'],
       default: 'Pending',
     },
-    razorpayOrderId: { type: String },
-    razorpayPaymentId: { type: String },
+    upiTransactionId: { type: String }, // User-provided UTR or Provider Txn ID
+    upiReferenceNo: { type: String }, // System-generated unique transaction ref
+    paymentVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Admin who verified if manual
+    paymentDetails: { type: Object }, // Store raw webhook/API data
 
     // Delivery address snapshot
     address: {

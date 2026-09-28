@@ -62,6 +62,7 @@ class ChatThread {
   final String customerId;
   final String customerName;
   final String customerEmail;
+  final String customerAvatar;
   final String lastMessage;
   final String lastSenderRole;
   final int unreadCount;
@@ -71,6 +72,7 @@ class ChatThread {
     required this.customerId,
     required this.customerName,
     required this.customerEmail,
+    required this.customerAvatar,
     required this.lastMessage,
     required this.lastSenderRole,
     this.unreadCount = 0,
@@ -82,6 +84,7 @@ class ChatThread {
       customerId: json['customerId']?.toString() ?? '',
       customerName: json['customerName']?.toString() ?? '',
       customerEmail: json['customerEmail']?.toString() ?? '',
+      customerAvatar: json['customerAvatar']?.toString() ?? '',
       lastMessage: json['lastMessage']?.toString() ?? '',
       lastSenderRole: json['lastSenderRole']?.toString() ?? 'user',
       unreadCount: json['unreadCount'] ?? 0,

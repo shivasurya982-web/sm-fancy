@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,22 +13,54 @@ class ApiService {
   static String currentUserName = '';
   static String currentUserEmail = '';
 
-  // Increased timeout for local network stability
   static const Duration _timeout = Duration(seconds: 15);
+  static String? _resolvedBaseUrl;
 
-  static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://127.0.0.1:5050/api';
-    }
+  static Future<String> getActiveBaseUrl() async {
+    if (_resolvedBaseUrl != null) return _resolvedBaseUrl!;
+
     const configuredBaseUrl = String.fromEnvironment('API_BASE_URL');
-    if (configuredBaseUrl.isNotEmpty) return configuredBaseUrl;
-    
-    return 'http://10.1.12.165:5050/api';
+    if (configuredBaseUrl.isNotEmpty) {
+      final sanitized = configuredBaseUrl.endsWith('/')
+          ? configuredBaseUrl.substring(0, configuredBaseUrl.length - 1)
+          : configuredBaseUrl;
+      _resolvedBaseUrl = sanitized.endsWith('/api') ? sanitized : '$sanitized/api';
+      return _resolvedBaseUrl!;
+    }
+
+    if (kIsWeb) {
+      _resolvedBaseUrl = 'http://127.0.0.1:5050/api';
+      return _resolvedBaseUrl!;
+    }
+
+    final candidates = [
+      'http://127.0.0.1:5050/api',
+      'http://10.1.7.106:5050/api',
+      'http://10.0.2.2:5050/api',
+    ];
+
+    for (final candidate in candidates) {
+      try {
+        final res = await http.get(Uri.parse('$candidate/health')).timeout(const Duration(seconds: 3));
+        if (res.statusCode == 200) {
+          debugPrint('✅ ApiService connected to live backend: $candidate');
+          _resolvedBaseUrl = candidate;
+          return _resolvedBaseUrl!;
+        }
+      } catch (_) {}
+    }
+
+    _resolvedBaseUrl = 'http://127.0.0.1:5050/api';
+    return _resolvedBaseUrl!;
   }
+
+  static String get baseUrl => _resolvedBaseUrl ?? 'http://127.0.0.1:5050/api';
 
   static bool get isLoggedIn => _token != null && _token!.isNotEmpty;
 
   static Future<void> init() async {
+    await getActiveBaseUrl();
+
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString('token');
     currentUserId = prefs.getString('userId');
@@ -46,7 +79,12 @@ class ApiService {
 
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.remove('token');
+    await prefs.remove('userId');
+    await prefs.remove('userRole');
+    await prefs.remove('userName');
+    await prefs.remove('userEmail');
+
     SocketService.disconnect();
     _token = null;
     currentUserId = null;
@@ -64,50 +102,40 @@ class ApiService {
   }
 
   static Future<dynamic> get(String endpoint, {int retries = 1}) async {
-    final List<String> authRequired = ['/cart', '/orders', '/auth/me', '/users', '/analytics/dashboard'];
-    if (authRequired.any((path) => endpoint.startsWith(path)) && !isLoggedIn) {
-      return null;
-    }
+    final List<String> authRequired = ['/cart', '/orders', '/auth/me', '/users', '/analytics/dashboard', '/addresses'];
+    final needsAuth = authRequired.any((path) => endpoint == path || endpoint.startsWith('$path/'));
+
+    if (needsAuth && !isLoggedIn) return null;
+    
+    final activeBase = await getActiveBaseUrl();
+    final url = '$activeBase$endpoint';
+    debugPrint('API GET Request: $url');
     try {
-      final response = await http
-          .get(Uri.parse('$baseUrl$endpoint'), headers: await _headers())
-          .timeout(_timeout);
+      final response = await http.get(Uri.parse(url), headers: await _headers()).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
-      if (retries > 0 && _isNetworkError(e)) {
-        return get(endpoint, retries: retries - 1);
-      }
+      if (retries > 0 && _isNetworkError(e)) return get(endpoint, retries: retries - 1);
       _handleError(e, 'GET $endpoint');
     }
   }
 
   static Future<dynamic> post(String endpoint, Map<String, dynamic> body, {int retries = 0}) async {
+    final activeBase = await getActiveBaseUrl();
+    final url = '$activeBase$endpoint';
+    debugPrint('API POST Request: $url');
     try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl$endpoint'),
-            headers: await _headers(),
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
+      final response = await http.post(Uri.parse(url), headers: await _headers(), body: jsonEncode(body)).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
-      if (retries > 0 && _isNetworkError(e)) {
-        return post(endpoint, body, retries: retries - 1);
-      }
+      if (retries > 0 && _isNetworkError(e)) return post(endpoint, body, retries: retries - 1);
       _handleError(e, 'POST $endpoint');
     }
   }
 
   static Future<dynamic> put(String endpoint, Map<String, dynamic> body) async {
+    final activeBase = await getActiveBaseUrl();
     try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl$endpoint'),
-            headers: await _headers(),
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
+      final response = await http.put(Uri.parse('$activeBase$endpoint'), headers: await _headers(), body: jsonEncode(body)).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
       _handleError(e, 'PUT $endpoint');
@@ -115,10 +143,9 @@ class ApiService {
   }
 
   static Future<dynamic> delete(String endpoint) async {
+    final activeBase = await getActiveBaseUrl();
     try {
-      final response = await http
-          .delete(Uri.parse('$baseUrl$endpoint'), headers: await _headers())
-          .timeout(_timeout);
+      final response = await http.delete(Uri.parse('$activeBase$endpoint'), headers: await _headers()).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
       _handleError(e, 'DELETE $endpoint');
@@ -126,34 +153,40 @@ class ApiService {
   }
 
   static bool _isNetworkError(dynamic e) {
-    return e is SocketException ||
-          e is http.ClientException ||
-          e is TimeoutException;
+    return e is SocketException || e is http.ClientException || e is TimeoutException;
   }
 
   static dynamic _handleResponse(http.Response response) {
     dynamic data;
     try {
       data = jsonDecode(response.body);
-    } catch (_) {
-      throw Exception('Invalid server response: ${response.statusCode}');
-    }
+    } catch (_) {}
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
     }
     
-    // If we are getting a 404 or 500, but it's valid JSON, throw the message
-    throw Exception(data != null && data['message'] != null ? data['message'] : 'Request failed with status: ${response.statusCode}');
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      logout();
+    }
+    
+    final message = (data != null && data['message'] != null) 
+        ? data['message'].toString() 
+        : 'Request failed (${response.statusCode})';
+    throw message;
   }
 
   static void _handleError(dynamic e, String context) {
     debugPrint('API Error [$context]: $e');
+    if (e is String) throw e; 
+
     final errStr = e.toString();
     if (e is SocketException || errStr.contains('refused')) {
-      throw Exception('Server unreachable. Check if your PC IP has changed or Firewall is blocking Port 5000. Current IP: $baseUrl');
+      throw 'Server unreachable ($baseUrl). Ensure server is running.';
+    } else if (e is TimeoutException || errStr.contains('Timeout')) {
+      throw 'Connection timed out ($baseUrl).';
     } else {
-      throw Exception(errStr.contains('Timeout') ? 'Connection timed out. Server taking too long or wrong IP address.' : 'Error: $e');
+      throw 'An unexpected error occurred: $e';
     }
   }
 
@@ -199,5 +232,3 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 }
-
-class TimeoutException implements Exception {}

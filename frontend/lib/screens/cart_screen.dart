@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../services/api_service.dart';
 import '../services/cart_service.dart';
 import '../services/product_service.dart';
 import '../models/cart_item.dart';
@@ -10,6 +11,7 @@ import '../bottom_navigation.dart';
 import '../widgets/gold_button.dart';
 import 'product_details_screen.dart';
 import 'checkout_screen.dart';
+import 'login_screen.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -222,6 +224,31 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
+  void _showLoginPrompt() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.deepCharcoal,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: const BorderSide(color: AppTheme.platinumBorder)),
+        title: const Text('LOGIN REQUIRED', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 1)),
+        content: const Text('Please login to complete your purchase.', style: TextStyle(color: AppTheme.coolGrey)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('DISMISS', style: TextStyle(color: AppTheme.coolGrey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()));
+            },
+            child: const Text('LOG IN'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSummary(BuildContext context, double total) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -262,8 +289,14 @@ class _CartScreenState extends State<CartScreen> {
             child: GoldButton(
               height: 48,
               label: 'CHECKOUT',
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const CheckoutScreen())),
+              onPressed: () {
+                if (!ApiService.isLoggedIn) {
+                  _showLoginPrompt();
+                  return;
+                }
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => CheckoutScreen()));
+              },
             ),
           ),
         ],
@@ -288,7 +321,7 @@ class _CartScreenState extends State<CartScreen> {
             onPressed: () {
               Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (_) => const BottomNavigation()),
+                  MaterialPageRoute(builder: (_) => BottomNavigation()),
                   (route) => false);
             },
             child: const Text('EXPLORE SHOP',

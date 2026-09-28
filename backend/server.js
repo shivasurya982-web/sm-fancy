@@ -22,7 +22,7 @@ const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
 });
 
-const PORT = 5050;
+const PORT = process.env.PORT || 5050;
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
@@ -35,6 +35,22 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Check DB Connection Middleware
+let isDBConnected = false;
+
+app.use((req, res, next) => {
+  // Allow health check without DB
+  if (req.path === '/api/health') return next();
+
+  if (!isDBConnected && req.path.startsWith('/api')) {
+    return res.status(503).json({
+        message: 'Database is currently connecting or unavailable. Please retry in 10 seconds.',
+        retryAfter: 10
+    });
+  }
+  next();
+});
 
 app.use((req, res, next) => {
   console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.originalUrl}`);
@@ -59,6 +75,7 @@ const appSettingsRouter = require('./routes/appSettings');
 const complaintsRouter = require('./routes/complaints');
 const categoryRoutes = require('./routes/categoryRoutes');
 const returnsRouter = require('./routes/returns');
+const addressRouter = require('./routes/addresses');
 
 // ─── API Registration ───────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
@@ -78,35 +95,59 @@ app.use('/api/settings', appSettingsRouter);
 app.use('/api/complaints', complaintsRouter);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/returns', returnsRouter);
+app.use('/api/addresses', addressRouter);
 
-app.get('/health', (req, res) => res.json({ status: 'OK' }));
+app.get('/api/health', (req, res) => res.json({ status: 'OK', db: isDBConnected }));
 
 // ─── Database & Server Start ────────────────────────────────────────────────
 const seedData = require('./seed');
 
+mongoose.connection.on('connected', () => {
+  isDBConnected = true;
+  console.log('✅ Connected to MongoDB Atlas');
+});
+
+mongoose.connection.on('error', (err) => {
+  isDBConnected = false;
+  console.error('❌ MongoDB Error:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+  isDBConnected = true; // Set to false ONLY if we want to block requests
+  // We keep it true here to let mongoose auto-reconnect attempt
+  console.log('⚠️ MongoDB Disconnected. Reconnecting...');
+});
+
 const connectDB = async (retryCount = 0) => {
   try {
+    console.log(`Connecting to DB (Attempt ${retryCount + 1})...`);
     await mongoose.connect(MONGODB_URI, {
-      family: 4,
-      serverSelectionTimeoutMS: 15000,
+      family: 4, // Force IPv4
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
     });
-    console.log('✅ Connected to MongoDB Atlas');
-    await seedData();
+
+    // Seed in background, don't await to avoid blocking server if network resets
+    seedData().then(() => {
+        console.log('DB Seeding check complete.');
+    }).catch(e => {
+        console.error('Non-critical seed error:', e.message);
+    });
+
   } catch (err) {
-    console.error(`❌ DB Connection Error (Attempt ${retryCount + 1}):`, err.message);
-    if (retryCount < 2) {
-      console.log('Retrying in 5 seconds...');
-      setTimeout(() => connectDB(retryCount + 1), 5000);
-    } else {
-      console.log('Starting in OFFLINE MODE. Admin features will return 500 until DB is whitelisted.');
-    }
+    isDBConnected = false;
+    console.error(`❌ DB Connection Failed:`, err.message);
+    const nextRetry = Math.min(30000, 5000 * (retryCount + 1));
+    console.log(`Retrying in ${nextRetry/1000} seconds...`);
+    setTimeout(() => connectDB(retryCount + 1), nextRetry);
   }
 };
 
 connectDB();
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 FancyWorld API running on http://127.0.0.1:${PORT}`);
+  console.log(`🚀 FancyWorld API online on port ${PORT}`);
 });
 
 app.set('io', io);

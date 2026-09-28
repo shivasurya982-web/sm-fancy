@@ -13,6 +13,7 @@ import 'chat_list_screen.dart';
 import 'admin_complaints_screen.dart';
 import 'category_management_screen.dart';
 import 'admin_analytics_screen.dart';
+import 'admin_profile_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -168,7 +169,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 if (mounted) {
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    MaterialPageRoute(builder: (_) => LoginScreen()),
                     (route) => false,
                   );
                 }
@@ -194,6 +195,7 @@ class AppManagementSection extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       children: [
+        _buildAdminTile(context, "Admin Profile", "Update your identity and security", Icons.admin_panel_settings_outlined, const AdminProfileScreen()),
         _buildAdminTile(context, "Products", "Manage inventory and pricing", Icons.inventory_2_outlined, const ProductManagementScreen()),
         _buildAdminTile(context, "Categories", "Manage product categories", Icons.category_outlined, const CategoryManagementScreen()),
         _buildAdminTile(context, "Analytics", "View sales and trends", Icons.analytics_outlined, const AdminAnalyticsScreen()),

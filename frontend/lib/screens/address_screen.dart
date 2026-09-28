@@ -62,7 +62,7 @@ class _AddressScreenState extends State<AddressScreen> {
                 children: [
                   Expanded(child: _buildField('City', city)),
                   const SizedBox(width: 16),
-                  Expanded(child: _buildField('Zip Code', pin, keyboard: TextInputType.number)),
+                  Expanded(child: _buildField('Pin Code', pin, keyboard: TextInputType.number)),
                 ],
               ),
               const SizedBox(height: 40),
@@ -71,10 +71,25 @@ class _AddressScreenState extends State<AddressScreen> {
                 child: ElevatedButton(
                   onPressed: () async {
                     if (name.text.isEmpty || phone.text.isEmpty || addr.text.isEmpty || city.text.isEmpty || pin.text.isEmpty) return;
-                    final updated = AddressModel(name: name.text, phone: phone.text, address: addr.text, city: city.text, pincode: pin.text);
-                    if (index == null) addresses.add(updated); else addresses[index] = updated;
-                    await AddressService.saveAddresses(addresses);
-                    if (mounted) { setState(() {}); Navigator.pop(ctx); }
+                    
+                    final updated = AddressModel(
+                        name: name.text.trim(), 
+                        phone: phone.text.trim(), 
+                        address: addr.text.trim(), 
+                        city: city.text.trim(), 
+                        pincode: pin.text.trim()
+                    );
+
+                    setState(() => _isLoading = true);
+                    Navigator.pop(ctx);
+                    
+                    try {
+                        await AddressService.saveAddress(updated);
+                        await _loadAddresses();
+                    } catch (e) {
+                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
+                        setState(() => _isLoading = false);
+                    }
                   },
                   child: const Text('SAVE ADDRESS'),
                 ),
@@ -110,11 +125,14 @@ class _AddressScreenState extends State<AddressScreen> {
                 ? const Center(child: CircularProgressIndicator(color: AppTheme.brushedPlatinum))
                 : addresses.isEmpty
                 ? _buildEmptyState()
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                    itemCount: addresses.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 16),
-                    itemBuilder: (ctx, idx) => _buildAddressCard(addresses[idx], idx),
+                : RefreshIndicator(
+                    onRefresh: _loadAddresses,
+                    child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                        itemCount: addresses.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 16),
+                        itemBuilder: (ctx, idx) => _buildAddressCard(addresses[idx], idx),
+                    ),
                   ),
           ),
         ),
@@ -150,12 +168,11 @@ class _AddressScreenState extends State<AddressScreen> {
           const SizedBox(height: 24),
           Row(
             children: [
-              _buildActionBtn('EDIT', Icons.edit_outlined, () => _showAddressDialog(address: a, index: idx)),
-              const SizedBox(width: 24),
               _buildActionBtn('DELETE', Icons.delete_outline_rounded, () async {
-                addresses.removeAt(idx);
-                await AddressService.saveAddresses(addresses);
-                setState(() {});
+                if (a.id == null) return;
+                setState(() => _isLoading = true);
+                await AddressService.deleteAddress(a.id!);
+                await _loadAddresses();
               }, isError: true),
             ],
           ),

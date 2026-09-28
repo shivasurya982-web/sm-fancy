@@ -94,8 +94,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         GoldButton(
-                          label: 'EXPLORE SHOP',
-                          onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BottomNavigation())),
+                          label: 'GUEST ACCESS',
+                          onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => BottomNavigation())),
                         ),
                         const SizedBox(height: 20),
                         Row(
@@ -106,7 +106,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                 child: BackdropFilter(
                                   filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                                   child: GestureDetector(
-                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LoginScreen())),
                                     child: Container(
                                       height: 60,
                                       decoration: BoxDecoration(
@@ -128,7 +128,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                 child: BackdropFilter(
                                   filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                                   child: GestureDetector(
-                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupScreen())),
+                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SignupScreen())),
                                     child: Container(
                                       height: 60,
                                       decoration: BoxDecoration(

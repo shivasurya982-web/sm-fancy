@@ -73,6 +73,13 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
         await ApiService.put('/auth/recovery-hint', {'recoveryHint': hint});
       }
 
+      await UserService.saveUser(
+        name: name,
+        email: email,
+        phone: phone,
+        profileImage: _profileImagePath,
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Admin profile updated successfully'),
@@ -306,7 +313,14 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                   decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppTheme.glassBorder, width: 2)),
                   child: ClipOval(
                     child: _profileImagePath != null && _profileImagePath!.isNotEmpty
-                      ? CachedNetworkImage(imageUrl: _profileImagePath!, fit: BoxFit.cover, placeholder: (ctx, url) => const CircularProgressIndicator(), errorWidget: (ctx, url, err) => const Icon(Icons.person, size: 60))
+                      ? CachedNetworkImage(
+                          imageUrl: _profileImagePath!, 
+                          fit: BoxFit.cover,
+                          width: 120,
+                          height: 120,
+                          placeholder: (ctx, url) => const CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brushedPlatinum),
+                          errorWidget: (ctx, url, err) => const Icon(Icons.person, size: 60),
+                        )
                       : const Icon(Icons.person_outline_rounded, color: AppTheme.coolGrey, size: 60),
                   ),
                 ),

@@ -138,6 +138,11 @@ class AppTheme {
         error: error,
       ),
 
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: brushedPlatinum,
+        refreshBackgroundColor: luxuryBlack,
+      ),
+
       textTheme: TextTheme(
         displayLarge: GoogleFonts.playfairDisplay(fontSize: 32, fontWeight: FontWeight.w900, color: brightPlatinum),
         headlineLarge: GoogleFonts.playfairDisplay(fontSize: 26, fontWeight: FontWeight.bold, color: brightPlatinum, letterSpacing: 0.5),

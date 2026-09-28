@@ -143,6 +143,14 @@ class _OrderManagementScreenState extends State<OrderManagementScreen> {
           Text(order.customerName.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: Colors.white, letterSpacing: 0.5)),
           const SizedBox(height: 6),
           Text(order.items.map((e) => e.name).join(', ').toUpperCase(), style: const TextStyle(color: AppTheme.coolGrey, fontSize: 10, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+                const Text('PAYMENT STATUS', style: TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900)),
+                Text((order.paymentStatus ?? 'Pending').toUpperCase(), style: TextStyle(color: order.paymentStatus == 'Paid' ? AppTheme.success : AppTheme.error, fontSize: 8, fontWeight: FontWeight.bold)),
+            ],
+          ),
           const SizedBox(height: 24),
           
           Row(

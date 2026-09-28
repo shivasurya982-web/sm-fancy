@@ -8,21 +8,13 @@ class SettingsService {
     
     try {
       final response = await ApiService.get('/settings');
-      _cachedSettings = response;
-      return response;
-    } catch (e) {
-      // Fallback defaults
-      return {
-        'onboardingBanners': [
-          {
-            'title': 'Elegance in\nEvery Detail',
-            'description': 'Discover carefully selected jewellery crafted with precision and luxury in mind.',
-            'image': 'assets/images/logo.png'
-          }
-        ],
-        'splashTagline': 'Luxury that speaks. Elegance that stays.'
-      };
-    }
+      if (response != null && response is Map<String, dynamic>) {
+        _cachedSettings = response;
+        return response;
+      }
+    } catch (_) {}
+
+    return {};
   }
 
   static Future<void> updateSettings(Map<String, dynamic> settings) async {

@@ -76,6 +76,7 @@ router.get('/threads', verifyToken, async (req, res) => {
             customerId,
             customerName: user.name,
             customerEmail: user.email,
+            customerAvatar: user.avatar || '',
             lastMessage: thread.lastMessage,
             lastMessageTime: thread.lastMessageTime,
             unreadCount
@@ -140,6 +141,12 @@ router.put('/messages/:id', verifyToken, async (req, res) => {
         chat.message = req.body.message;
         chat.isEdited = true;
         await chat.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(chat.roomId).emit('message_edited', chat);
+        }
+
         res.json(chat);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -160,6 +167,12 @@ router.delete('/messages/:id', verifyToken, async (req, res) => {
         chat.isDeleted = true;
         chat.message = 'This message was deleted';
         await chat.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(chat.roomId).emit('message_deleted', { id: chat._id, roomId: chat.roomId });
+        }
+
         res.json({ message: 'Message deleted' });
     } catch (err) {
         res.status(500).json({ message: err.message });

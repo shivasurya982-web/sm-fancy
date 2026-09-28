@@ -54,6 +54,10 @@ router.post('/login', async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
+    if (user.isSuspended) {
+        return res.status(403).json({ message: 'ACCOUNT SUSPENDED. Please contact admin for support.' });
+    }
+
     const isMatch = await user.comparePassword(password);
     if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
@@ -81,16 +85,32 @@ router.get('/me', verifyToken, async (req, res) => {
     }
 });
 
+// GET /api/auth/admin-info
+router.get('/admin-info', async (req, res) => {
+    try {
+        const admin = await User.findOne({ role: 'admin' }).select('name avatar');
+        if (!admin) return res.status(404).json({ message: 'Admin not found' });
+        res.json(admin);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // PUT /api/auth/me (Update Profile)
 router.put('/me', verifyToken, async (req, res) => {
     try {
-        const { name, phone, avatar } = req.body;
+        const { name, phone, avatar, email } = req.body;
         const user = await User.findById(req.userId);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
         if (name) user.name = name;
         if (phone) user.phone = phone;
         if (avatar) user.avatar = avatar;
+        if (email) {
+            const existing = await User.findOne({ email, _id: { $ne: req.userId } });
+            if (existing) return res.status(400).json({ message: 'Email already in use' });
+            user.email = email;
+        }
 
         await user.save();
         res.json(user);

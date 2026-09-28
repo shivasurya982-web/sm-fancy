@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/chat_service.dart';
 import '../config/theme.dart';
 import 'chat_screen.dart';
@@ -58,14 +59,32 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         color: Colors.transparent,
                         child: ListTile(
                           onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(customerId: thread.customerId, customerName: thread.customerName)));
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
+                                customerId: thread.customerId, 
+                                customerName: thread.customerName,
+                                customerAvatar: thread.customerAvatar,
+                            )));
                           },
                           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           leading: Container(
                             width: 48, height: 48,
-                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), shape: BoxShape.circle),
+                            decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.05),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppTheme.glassBorder, width: 0.5),
+                            ),
                             alignment: Alignment.center,
-                            child: Text(thread.customerName.isNotEmpty ? thread.customerName[0].toUpperCase() : 'C', style: const TextStyle(color: AppTheme.brushedPlatinum, fontWeight: FontWeight.w900, fontSize: 18)),
+                            child: ClipOval(
+                              child: thread.customerAvatar.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: thread.customerAvatar,
+                                    fit: BoxFit.cover,
+                                    width: 48, height: 48,
+                                    placeholder: (ctx, url) => const CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brushedPlatinum),
+                                    errorWidget: (ctx, url, err) => Text(thread.customerName.isNotEmpty ? thread.customerName[0].toUpperCase() : 'C', style: const TextStyle(color: AppTheme.brushedPlatinum, fontWeight: FontWeight.w900, fontSize: 18)),
+                                  )
+                                : Text(thread.customerName.isNotEmpty ? thread.customerName[0].toUpperCase() : 'C', style: const TextStyle(color: AppTheme.brushedPlatinum, fontWeight: FontWeight.w900, fontSize: 18)),
+                            ),
                           ),
                           title: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,

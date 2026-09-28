@@ -6,6 +6,8 @@ import '../config/theme.dart';
 import 'api_service.dart';
 import 'notification_service.dart';
 
+import 'local_notification_service.dart';
+
 class SocketService {
   static io.Socket? socket;
   static final StreamController<dynamic> _chatMessages = StreamController<dynamic>.broadcast();
@@ -17,7 +19,7 @@ class SocketService {
     socket?.disconnect();
     
     // Using the same logic as ApiService for consistency
-    final String baseUrl = ApiService.baseUrl.replaceFirst('/api', '');
+    final String baseUrl = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
 
     socket = io.io(
       baseUrl,
@@ -40,13 +42,29 @@ class SocketService {
     });
 
     socket!.on('receive_message', (data) {
-      _chatMessages.add(data);
+      _chatMessages.add({'event': 'new', 'data': data});
+    });
+
+    socket!.on('message_edited', (data) {
+      _chatMessages.add({'event': 'edited', 'data': data});
+    });
+
+    socket!.on('message_deleted', (data) {
+      _chatMessages.add({'event': 'deleted', 'data': data});
     });
 
     // Listen for new notifications
     socket!.on('new_notification', (data) {
       debugPrint('Real-time Notification Payload: $data');
       NotificationService.onNewNotificationReceived(data);
+      
+      // Trigger System Pop-up Notification
+      LocalNotificationService.showNotification(
+        title: data['title'] ?? 'Archive Alert',
+        body: data['body'] ?? 'New transmission received.',
+      );
+      
+      // Keep Toast as secondary feedback
       _showNotificationToast(data['title'] ?? 'Archive Alert', data['body'] ?? 'New transmission received.');
     });
 

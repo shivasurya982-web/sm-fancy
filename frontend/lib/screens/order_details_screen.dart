@@ -143,6 +143,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       padding: const EdgeInsets.all(24),
       decoration: AppTheme.premiumCard(),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -151,6 +152,25 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               _buildStatusBadge(widget.order.status),
             ],
           ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('PAYMENT STATUS', style: TextStyle(color: AppTheme.coolGrey, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
+              Text(
+                (widget.order.paymentStatus ?? 'Pending').toUpperCase(), 
+                style: TextStyle(
+                    color: widget.order.paymentStatus == 'Paid' ? AppTheme.success : AppTheme.error, 
+                    fontSize: 9, fontWeight: FontWeight.bold
+                )
+              ),
+            ],
+          ),
+          if (widget.order.paymentMethod == 'UPI')
+             Padding(
+               padding: const EdgeInsets.only(top: 8),
+               child: Text('REF: ${widget.order.upiTransactionId ?? 'Awaiting Bank Confirmation'}', style: const TextStyle(color: Colors.white24, fontSize: 8)),
+             ),
           const Divider(height: 40, color: AppTheme.platinumBorder, thickness: 0.5),
           _buildPriceRow('Items Total', '₹${widget.order.subtotal.toStringAsFixed(0)}'),
           const SizedBox(height: 12),
@@ -198,7 +218,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 Text(addr['phone'] ?? '', style: const TextStyle(color: AppTheme.coolGrey, fontSize: 11)),
                 const SizedBox(height: 12),
                 Text('${addr['street']}, ${addr['city']}', style: const TextStyle(color: AppTheme.coolGrey, height: 1.4, fontSize: 12)),
-                Text('${addr['state']} - ${addr['zipCode']}', style: const TextStyle(color: AppTheme.coolGrey, fontSize: 12)),
+                Text('${addr['state']} - ${addr['pincode']}', style: const TextStyle(color: AppTheme.coolGrey, fontSize: 12)),
               ],
             ),
           ),

@@ -1,13 +1,17 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import '../models/address_model.dart';
 import '../services/address_service.dart';
 import '../services/cart_service.dart';
 import '../services/order_service.dart';
 import '../services/api_service.dart';
 import '../services/settings_service.dart';
+import '../services/payment_service.dart';
 import '../config/theme.dart';
 import '../widgets/gold_button.dart';
+import '../bottom_navigation.dart';
 import 'order_success_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -25,8 +29,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _pinController = TextEditingController();
 
   String _paymentMethod = 'COD';
-  bool _isPlacingOrder = false;
-  String? _upiQrUrl;
+  bool _isLoading = false;
   String _localCity = 'Tiruchendur';
   double _localFee = 50.0;
   double _standardFee = 100.0;
@@ -37,6 +40,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _nameController.text = ApiService.currentUserName;
     _loadSettings();
     _loadSavedAddress();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _streetController.dispose();
+    _cityController.dispose();
+    _pinController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSavedAddress() async {
@@ -57,7 +70,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final settings = await SettingsService.getSettings();
     if (mounted) {
       setState(() {
-        _upiQrUrl = settings['upiQrCode'];
         _localCity = settings['localCity'] ?? 'Tiruchendur';
         _localFee = (settings['localShippingFee'] as num?)?.toDouble() ?? 50.0;
         _standardFee = (settings['standardShippingFee'] as num?)?.toDouble() ?? 100.0;
@@ -72,50 +84,168 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _handlePlaceOrder() async {
-    if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _streetController.text.isEmpty) {
+    if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _streetController.text.isEmpty || _pinController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all details")));
       return;
     }
-    if (_paymentMethod == 'UPI') _showUPIDialog();
-    else _confirmOrder();
+    
+    if (_paymentMethod == 'UPI') {
+        _startDynamicUPIPayment();
+    } else {
+        _confirmOrderCOD();
+    }
   }
 
-  void _showUPIDialog() {
-    final total = CartService.cartTotal + _currentShippingFee;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(32),
-        decoration: const BoxDecoration(
-          color: AppTheme.matteBlack,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-          border: Border(top: BorderSide(color: AppTheme.platinumBorder, width: 0.5)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('PAYMENT', style: Theme.of(context).textTheme.labelSmall),
-            const SizedBox(height: 24),
-            Text('₹${total.toStringAsFixed(0)}', style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver)),
-            const SizedBox(height: 32),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppTheme.platinumBorder)),
-              child: _upiQrUrl != null ? CachedNetworkImage(imageUrl: _upiQrUrl!, width: 200, height: 200) : const Icon(Icons.qr_code_scanner_rounded, size: 180, color: Colors.black),
-            ),
-            const SizedBox(height: 40),
-            GoldButton(label: 'CONFIRM PAYMENT', onPressed: () { Navigator.pop(context); _confirmOrder(); }),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
+  // --- Dynamic UPI QR Flow ---
+
+  Future<void> _startDynamicUPIPayment() async {
+    setState(() => _isLoading = true);
+    try {
+      final shippingAddress = {
+        'fullName': _nameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'addressLine1': _streetController.text.trim(),
+        'city': _cityController.text.trim(),
+        'state': 'Tamil Nadu',
+        'pincode': _pinController.text.trim(),
+      };
+
+      final cartItemsMap = CartService.cartItems.map((item) => {
+        'product': item.productId,
+        'name': item.name,
+        'price': item.price,
+        'quantity': item.quantity,
+        'image': item.image,
+      }).toList();
+
+      // 1. Create Order on Backend (Returns Dynamic UPI Intent Payload)
+      final orderData = await PaymentService.initiateUPIDynamicQR(
+          items: cartItemsMap, 
+          address: shippingAddress,
+          shipping: _currentShippingFee,
+      );
+
+      final String upiPayload = orderData['upiPayload'];
+      final String orderId = orderData['fancyWorldOrderId'];
+      final double amount = (orderData['amount'] as num).toDouble();
+
+      // 2. Show Dynamic QR Dialog
+      _showDynamicQRDialog(upiPayload, orderId, amount);
+
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to initiate payment: $e"), backgroundColor: AppTheme.error));
+      setState(() => _isLoading = false);
+    }
   }
 
-  Future<void> _confirmOrder() async {
-    setState(() => _isPlacingOrder = true);
+  void _showDynamicQRDialog(String payload, String orderId, double amount) {
+      Timer? statusTimer;
+      bool isVerifying = false;
+
+      showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => StatefulBuilder(
+              builder: (context, setDialogState) => AlertDialog(
+                  backgroundColor: AppTheme.deepCharcoal,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32), side: const BorderSide(color: AppTheme.glassBorder)),
+                  title: Center(child: Text('SCAN TO PAY', style: GoogleFonts.playfairDisplay(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver, letterSpacing: 2))),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                          Text('₹${amount.toStringAsFixed(0)}', style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white)),
+                          const SizedBox(height: 24),
+                          Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
+                              child: QrImageView(
+                                  data: payload,
+                                  version: QrVersions.auto,
+                                  size: 180,
+                                  eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
+                                  dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Colors.black),
+                              ),
+                          ),
+                          const SizedBox(height: 24),
+                          const Text('Scan using Google Pay, PhonePe, or Paytm', textAlign: TextAlign.center, style: TextStyle(color: AppTheme.coolGrey, fontSize: 11)),
+                          const SizedBox(height: 12),
+                          if (isVerifying) 
+                              const Column(
+                                  children: [
+                                      SizedBox(height: 8, width: 8, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brushedPlatinum)),
+                                      SizedBox(height: 12),
+                                      Text('WAITING FOR BANK CONFIRMATION...', style: TextStyle(color: AppTheme.brushedPlatinum, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                                  ],
+                              ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                      TextButton(
+                          onPressed: () { 
+                              statusTimer?.cancel();
+                              Navigator.pop(ctx); 
+                              setState(() => _isLoading = false); 
+                          },
+                          child: const Text('CANCEL', style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold))
+                      ),
+                      ElevatedButton(
+                          onPressed: isVerifying ? null : () async {
+                              setDialogState(() => isVerifying = true);
+                              
+                              // Polling mechanism to check real backend status (webhook verified)
+                              int attempts = 0;
+                              statusTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+                                  attempts++;
+                                  final res = await PaymentService.checkPaymentStatus(orderId);
+                                  if (res['paymentStatus'] == 'Paid') {
+                                      timer.cancel();
+                                      Navigator.pop(ctx);
+                                      _postOrderSuccess(orderId);
+                                  }
+                                  if (attempts > 15) { // Timeout after 1 min
+                                      timer.cancel();
+                                      setDialogState(() => isVerifying = false);
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Auto-verification timed out. If you paid, our team will confirm manually.")));
+                                  }
+                              });
+                          },
+                          child: const Text('I HAVE PAID')
+                      ),
+                  ],
+              ),
+          )
+      );
+  }
+
+  Future<void> _postOrderSuccess(String orderId) async {
+      await CartService.clearCart();
+      try {
+          final addr = AddressModel(
+              name: _nameController.text.trim(),
+              phone: _phoneController.text.trim(),
+              address: _streetController.text.trim(),
+              city: _cityController.text.trim(),
+              pincode: _pinController.text.trim(),
+          );
+          await AddressService.saveAddress(addr);
+      } catch (_) {}
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      try {
+          final fullOrder = await OrderService.getOrderById(orderId);
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: fullOrder)));
+      } catch (e) {
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const BottomNavigation()), (_) => false);
+      }
+  }
+
+  // --- COD Logic ---
+
+  Future<void> _confirmOrderCOD() async {
+    setState(() => _isLoading = true);
     try {
       final shippingAddress = {
         'fullName': _nameController.text.trim(),
@@ -135,7 +265,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       final order = await OrderService.placeOrder(
         shippingAddress: shippingAddress,
-        paymentMethod: _paymentMethod,
+        paymentMethod: 'COD',
         items: cartItemsMap,
         subtotal: CartService.cartTotal,
         shipping: _currentShippingFee,
@@ -143,12 +273,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       );
 
       await CartService.clearCart();
+      try {
+          await AddressService.saveAddress(AddressModel(
+              name: shippingAddress['fullName']!,
+              phone: shippingAddress['phone']!,
+              address: shippingAddress['addressLine1']!,
+              city: shippingAddress['city']!,
+              pincode: shippingAddress['pincode']!,
+          ));
+      } catch (_) {}
+
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: order)));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Order Failed: $e"), backgroundColor: AppTheme.error));
     } finally {
-      if (mounted) setState(() => _isPlacingOrder = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -166,41 +306,51 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
       body: Container(
         decoration: AppTheme.filigreeBackground(),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: isWeb ? 500 : double.infinity),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSectionHeader('SHIPPING ADDRESS'),
-                  const SizedBox(height: 16),
-                  _buildAddressForm(),
-                  
-                  const SizedBox(height: 40),
-                  _buildSectionHeader('PAYMENT METHOD'),
-                  const SizedBox(height: 16),
-                  _buildPaymentOption('COD', Icons.payments_outlined),
-                  const SizedBox(height: 12),
-                  _buildPaymentOption('UPI', Icons.qr_code_rounded),
-
-                  const SizedBox(height: 40),
-                  _buildSectionHeader('ORDER SUMMARY'),
-                  const SizedBox(height: 16),
-                  _buildSummaryCard(total),
-                  
-                  const SizedBox(height: 48),
-                  GoldButton(
-                    label: 'PLACE ORDER', 
-                    onPressed: _isPlacingOrder ? null : _handlePlaceOrder,
-                    isLoading: _isPlacingOrder,
+        child: Stack(
+            children: [
+                Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: isWeb ? 500 : double.infinity),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader('SHIPPING ADDRESS'),
+                          const SizedBox(height: 16),
+                          _buildAddressForm(),
+                          
+                          const SizedBox(height: 40),
+                          _buildSectionHeader('PAYMENT METHOD'),
+                          const SizedBox(height: 16),
+                          _buildPaymentOption('COD', Icons.payments_outlined, 'Pay when you receive'),
+                          const SizedBox(height: 12),
+                          _buildPaymentOption('UPI', Icons.qr_code_scanner_rounded, 'Secure Dynamic QR Code'),
+                          
+                          const SizedBox(height: 40),
+                          _buildSectionHeader('ORDER SUMMARY'),
+                          const SizedBox(height: 16),
+                          _buildSummaryCard(total),
+                          
+                          const SizedBox(height: 48),
+                          GoldButton(
+                            label: _paymentMethod == 'UPI' ? 'GENERATE PAYMENT QR' : 'PLACE ORDER', 
+                            onPressed: _isLoading ? null : _handlePlaceOrder,
+                            isLoading: _isLoading,
+                          ),
+                          const SizedBox(height: 40),
+                        ],
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 40),
-                ],
-              ),
-            ),
-          ),
+                ),
+                
+                if (_isLoading)
+                  Container(
+                      color: Colors.black54,
+                      child: const Center(child: CircularProgressIndicator(color: AppTheme.brushedPlatinum)),
+                  ),
+            ],
         ),
       ),
     );
@@ -224,7 +374,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             children: [
               Expanded(child: _buildField('City', _cityController)),
               const SizedBox(width: 16),
-              Expanded(child: _buildField('Zip Code', _pinController, keyboard: TextInputType.number)),
+              Expanded(child: _buildField('Pin Code', _pinController, keyboard: TextInputType.number)),
             ],
           ),
         ],
@@ -245,7 +395,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _buildPaymentOption(String name, IconData icon) {
+  Widget _buildPaymentOption(String name, IconData icon, String sub) {
     final isSelected = _paymentMethod == name;
     return GestureDetector(
       onTap: () => setState(() => _paymentMethod = name),
@@ -261,9 +411,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           children: [
             Icon(icon, color: isSelected ? AppTheme.brushedPlatinum : AppTheme.coolGrey, size: 20),
             const SizedBox(width: 16),
-            Text(name, style: TextStyle(color: isSelected ? AppTheme.polishedSilver : AppTheme.coolGrey, fontWeight: isSelected ? FontWeight.w900 : FontWeight.w400, fontSize: 11, letterSpacing: 1)),
+            Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                    Text(name, style: TextStyle(color: isSelected ? AppTheme.polishedSilver : AppTheme.coolGrey, fontWeight: isSelected ? FontWeight.w900 : FontWeight.w400, fontSize: 11, letterSpacing: 1)),
+                    Text(sub, style: const TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w500)),
+                ],
+            ),
             const Spacer(),
-            if (isSelected) Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppTheme.sapphireBlue, shape: BoxShape.circle, boxShadow: [BoxShadow(color: AppTheme.sapphireBlue, blurRadius: 4)])),
+            if (isSelected) Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppTheme.brushedPlatinum, shape: BoxShape.circle, boxShadow: [BoxShadow(color: AppTheme.brushedPlatinum, blurRadius: 4)])),
           ],
         ),
       ),

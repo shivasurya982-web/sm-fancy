@@ -9,6 +9,7 @@ import '../services/settings_service.dart';
 import '../config/theme.dart';
 import 'welcome_screen.dart';
 import 'admin_dashboard_screen.dart';
+import 'login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -44,7 +45,7 @@ class _SplashScreenState extends State<SplashScreen> {
     );
 
     final elapsed = DateTime.now().difference(startTime);
-    final remaining = const Duration(milliseconds: 3000) - elapsed;
+    final remaining = const Duration(milliseconds: 5000) - elapsed;
 
     if (remaining > Duration.zero) {
       await Future.delayed(remaining);
@@ -65,9 +66,10 @@ class _SplashScreenState extends State<SplashScreen> {
         );
       }
     } else {
+      // Go to Guest Mode (BottomNavigation without login)
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => WelcomeScreen()),
+        MaterialPageRoute(builder: (_) => BottomNavigation()),
       );
     }
   }

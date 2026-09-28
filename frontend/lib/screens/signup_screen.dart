@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
 import '../config/theme.dart';
 import '../widgets/gold_button.dart';
+import '../widgets/sparkle_background.dart';
 import '../bottom_navigation.dart';
 import 'login_screen.dart';
 
@@ -38,7 +39,10 @@ class _SignupScreenState extends State<SignupScreen> {
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppTheme.error));
+      if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('Error: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -51,8 +55,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.matteBlack,
-      body: Container(
-        decoration: AppTheme.filigreeBackground(),
+      body: LuxurySparkleBackground(
         child: Center(
           child: SingleChildScrollView(
             child: Container(
@@ -63,31 +66,18 @@ class _SignupScreenState extends State<SignupScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppTheme.brushedPlatinum),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => BottomNavigation())),
-                        child: const Text('GUEST HOME', style: TextStyle(color: AppTheme.coolGrey, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: 20),
                   Text('REGISTER', style: Theme.of(context).textTheme.headlineLarge?.copyWith(letterSpacing: 2, fontSize: 24)),
                   const SizedBox(height: 8),
-                  Text('Join the platinum collective.', style: Theme.of(context).textTheme.bodyMedium),
+                  Text('Welcome to SM Fancy.', style: Theme.of(context).textTheme.bodyMedium),
 
                   const SizedBox(height: 48),
 
-                  _buildField('FULL NAME', _nameController, hint: 'e.g. John Doe'),
+                  _buildField('FULL NAME', _nameController, hint: 'ENTER YOUR NAME'),
                   const SizedBox(height: 24),
-                  _buildField('EMAIL ADDRESS', _emailController, hint: 'john@example.com'),
+                  _buildField('EMAIL ADDRESS', _emailController, hint: 'ENTER YOUR EMAIL'),
                   const SizedBox(height: 24),
-                  _buildField('RECOVERY HINT', _hintController, hint: 'Security answer'),
+                  _buildField('RECOVERY HINT', _hintController, hint: 'ENTER RECOVERY HINT'),
                   const SizedBox(height: 24),
                   _buildField('PASSWORD', _passwordController, obscure: true, hint: '••••••••'),
                   const SizedBox(height: 24),
@@ -100,7 +90,26 @@ class _SignupScreenState extends State<SignupScreen> {
                     onPressed: _handleSignup,
                     isLoading: _isLoading,
                   ),
+                  
                   const SizedBox(height: 40),
+
+                  Center(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen())),
+                      child: RichText(
+                        text: TextSpan(
+                          text: "ALREADY HAVE AN ACCOUNT? ",
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppTheme.coolGrey),
+                          children: const [
+                            TextSpan(
+                              text: 'LOGIN',
+                              style: TextStyle(color: AppTheme.brushedPlatinum, fontWeight: FontWeight.w900),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

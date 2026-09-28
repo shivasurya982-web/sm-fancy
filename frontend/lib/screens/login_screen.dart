@@ -5,6 +5,7 @@ import '../bottom_navigation.dart';
 import '../services/auth_service.dart';
 import '../config/theme.dart';
 import '../widgets/gold_button.dart';
+import '../widgets/sparkle_background.dart';
 import 'admin_dashboard_screen.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
@@ -47,7 +48,8 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppTheme.error));
+      final msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('Error: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -60,8 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.matteBlack,
-      body: Container(
-        decoration: AppTheme.filigreeBackground(),
+      body: LuxurySparkleBackground(
         child: Center(
           child: SingleChildScrollView(
             child: Container(
@@ -72,10 +73,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => BottomNavigation())),
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppTheme.brushedPlatinum),
-                  ),
                   const SizedBox(height: 20),
                   
                   Center(
@@ -104,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _emailController,
-                    decoration: const InputDecoration(hintText: 'Enter your email'),
+                    decoration: const InputDecoration(hintText: 'ENTER YOUR EMAIL'),
                   ),
 
                   const SizedBox(height: 24),
@@ -144,14 +141,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   Center(
                     child: GestureDetector(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SignupScreen())),
+                      onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => SignupScreen())),
                       child: RichText(
                         text: TextSpan(
-                          text: "NEED AN ACCOUNT? ",
+                          text: "IF YOU'R NEW, ",
                           style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppTheme.coolGrey),
                           children: const [
                             TextSpan(
-                              text: 'REGISTER',
+                              text: 'CREATE ACCOUNT',
                               style: TextStyle(color: AppTheme.brushedPlatinum, fontWeight: FontWeight.w900),
                             ),
                           ],

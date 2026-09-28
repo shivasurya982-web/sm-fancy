@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const addressSchema = new mongoose.Schema({
-  label: { type: String, default: 'Home' }, // Home, Work, Other
+  label: { type: String, default: 'Home' },
   fullName: { type: String, required: true },
   phone: { type: String, required: true },
   addressLine1: { type: String, required: true },
@@ -26,31 +26,22 @@ const userSchema = new mongoose.Schema(
     addresses: [addressSchema],
     wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
 
-    // Loyalty & Wallet
     loyaltyPoints: { type: Number, default: 0 },
     wallet: { type: Number, default: 0 },
 
-    // OTP for verification / forgot password
-    otp: { type: String },
-    otpExpiry: { type: Date },
-    isVerified: { type: Boolean, default: false },
-
-    // Recovery hint for forgot password
     recoveryHint: { type: String, default: '' },
 
-    // Notification preferences
     notificationEnabled: { type: Boolean, default: true },
     locationEnabled: { type: Boolean, default: false },
 
-    // Premium membership
     isPremium: { type: Boolean, default: false },
     premiumExpiry: { type: Date },
 
-    // FCM token for push notifications
     fcmToken: { type: String },
-
     language: { type: String, default: 'en' },
     referralCode: { type: String, unique: true, sparse: true },
+
+    isSuspended: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

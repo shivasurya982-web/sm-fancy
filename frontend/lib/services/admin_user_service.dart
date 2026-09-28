@@ -23,4 +23,9 @@ class AdminUserService {
   static Future<void> deleteUser(String id) async {
     await ApiService.delete('/users/$id');
   }
+
+  static Future<bool> toggleSuspension(String id) async {
+    final res = await ApiService.put('/users/$id/suspend', {});
+    return res['isSuspended'] ?? false;
+  }
 }

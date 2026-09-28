@@ -1,4 +1,5 @@
 class AddressModel {
+  final String? id;
   final String name;
   final String phone;
   final String address;
@@ -6,6 +7,7 @@ class AddressModel {
   final String pincode;
 
   AddressModel({
+    this.id,
     required this.name,
     required this.phone,
     required this.address,

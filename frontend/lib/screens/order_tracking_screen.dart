@@ -135,7 +135,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               children: [
                 Text(addr['name']?.toString().toUpperCase() ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.polishedSilver)),
                 const SizedBox(height: 8),
-                Text('${addr['street']}, ${addr['city']}, ${addr['state']} - ${addr['zipCode']}', style: const TextStyle(color: AppTheme.coolGrey, fontSize: 12, height: 1.4)),
+                Text('${addr['street']}, ${addr['city']}, ${addr['state']} - ${addr['pincode']}', style: const TextStyle(color: AppTheme.coolGrey, fontSize: 12, height: 1.4)),
               ],
             ),
           ),

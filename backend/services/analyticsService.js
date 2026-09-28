@@ -3,6 +3,8 @@ const Product = require('../models/Product');
 
 const recordOrderSale = async (order) => {
   try {
+    if (order.status === 'Cancelled') return; // Don't record cancelled orders initially
+
     const date = new Date(order.createdAt || Date.now());
     const year = date.getFullYear();
     const month = date.getMonth() + 1; // getMonth is 0-indexed
