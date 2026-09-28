@@ -15,6 +15,7 @@ class ApiService {
 
   static const Duration _timeout = Duration(seconds: 15);
   static String? _resolvedBaseUrl;
+  static const String _productionBaseUrl = 'https://sm-fancy-backend.onrender.com/api';
 
   static Future<String> getActiveBaseUrl() async {
     if (_resolvedBaseUrl != null) return _resolvedBaseUrl!;
@@ -28,33 +29,11 @@ class ApiService {
       return _resolvedBaseUrl!;
     }
 
-    if (kIsWeb) {
-      _resolvedBaseUrl = 'http://127.0.0.1:5050/api';
-      return _resolvedBaseUrl!;
-    }
-
-    final candidates = [
-      'http://127.0.0.1:5050/api',
-      'http://10.1.7.106:5050/api',
-      'http://10.0.2.2:5050/api',
-    ];
-
-    for (final candidate in candidates) {
-      try {
-        final res = await http.get(Uri.parse('$candidate/health')).timeout(const Duration(seconds: 3));
-        if (res.statusCode == 200) {
-          debugPrint('✅ ApiService connected to live backend: $candidate');
-          _resolvedBaseUrl = candidate;
-          return _resolvedBaseUrl!;
-        }
-      } catch (_) {}
-    }
-
-    _resolvedBaseUrl = 'http://127.0.0.1:5050/api';
+    _resolvedBaseUrl = _productionBaseUrl;
     return _resolvedBaseUrl!;
   }
 
-  static String get baseUrl => _resolvedBaseUrl ?? 'http://127.0.0.1:5050/api';
+  static String get baseUrl => _resolvedBaseUrl ?? _productionBaseUrl;
 
   static bool get isLoggedIn => _token != null && _token!.isNotEmpty;
 
