@@ -146,6 +146,14 @@ const connectDB = async (retryCount = 0) => {
 
 connectDB();
 
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'SM Fancy Backend is running',
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 FancyWorld API online on port ${PORT}`);
 });
