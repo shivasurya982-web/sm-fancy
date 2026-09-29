@@ -88,20 +88,31 @@ router.post('/', verifyToken, async (req, res) => {
     // Record for persistent analytics (decoupled from order history)
     await recordOrderSale(order);
 
-    // 3. Decrease Stock (Atomic check-and-decrement would be better, but this is a solid improvement)
+    // 3. Decrease Stock and check low stock alert
     for (const item of items) {
-        await Product.findByIdAndUpdate(item.product, {
-            $inc: { stock: -item.quantity }
-        });
+        const updatedProduct = await Product.findByIdAndUpdate(
+            item.product,
+            { $inc: { stock: -item.quantity } },
+            { new: true }
+        );
+        if (updatedProduct && updatedProduct.stock <= 5) {
+          await createNotification(req.app, {
+            forAdmin: true,
+            title: updatedProduct.stock <= 0 ? 'Out of Stock Alert!' : 'Low Stock Warning!',
+            body: `${updatedProduct.name} has ${updatedProduct.stock <= 0 ? '0 (Out of stock)' : updatedProduct.stock + ' left in stock'}.`,
+            type: 'stock',
+            data: { productId: updatedProduct._id, screen: 'ProductManagement' }
+          });
+        }
     }
 
     // Reward points
     const pointsEarned = Math.floor(total / 100);
-    await User.findByIdAndUpdate(req.userId, {
+    const user = await User.findByIdAndUpdate(req.userId, {
       $inc: { loyaltyPoints: pointsEarned },
-    });
+    }, { new: true });
 
-    // Create Notification
+    // Create Customer Notification
     const productNames = items.map(i => i.name).join(', ');
     await createNotification(req.app, {
       userId: req.userId,
@@ -109,6 +120,15 @@ router.post('/', verifyToken, async (req, res) => {
       body: `Your purchase of ${productNames} has been successfully placed.`,
       type: 'order',
       data: { orderId: order._id }
+    });
+
+    // Create Admin Notification
+    await createNotification(req.app, {
+      forAdmin: true,
+      title: 'New Order Placed!',
+      body: `Order #${order.orderNumber} placed by ${user?.name || 'Customer'} for ₹${total.toFixed(0)}.`,
+      type: 'order',
+      data: { orderId: order._id, screen: 'OrderManagement' }
     });
 
     res.status(201).json(order);

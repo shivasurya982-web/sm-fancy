@@ -205,7 +205,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
     final bool isWeb = screenWidth > 800;
-    final topBarHeight = MediaQuery.of(context).padding.top + 70;
+    final topBarHeight = MediaQuery.of(context).padding.top + 105;
     
     return Scaffold(
       backgroundColor: AppTheme.deepCharcoal,

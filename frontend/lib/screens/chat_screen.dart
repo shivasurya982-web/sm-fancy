@@ -13,6 +13,7 @@ import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../services/upload_service.dart';
 import '../config/theme.dart';
+import '../widgets/image_viewer.dart';
 
 class ChatScreen extends StatefulWidget {
   final String customerId;
@@ -255,7 +256,19 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (msg.image != null && msg.image!.isNotEmpty && !isDeleted) Padding(padding: const EdgeInsets.only(bottom: 8), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: CachedNetworkImage(imageUrl: msg.image!))),
+              if (msg.image != null && msg.image!.isNotEmpty && !isDeleted) 
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8), 
+                  child: GestureDetector(
+                    onTap: () {
+                      FullScreenImageViewer.show(context, msg.image!, title: 'Chat Photo');
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12), 
+                      child: CachedNetworkImage(imageUrl: msg.image!),
+                    ),
+                  ),
+                ),
               if (msg.location != null && !isDeleted) _buildLocationCard(msg.location!),
               Text(isDeleted ? 'This message was deleted' : msg.message, style: TextStyle(color: isDeleted ? AppTheme.coolGrey : (isMe ? Colors.white : AppTheme.polishedSilver), fontSize: 13, height: 1.4, fontStyle: isDeleted ? FontStyle.italic : FontStyle.normal)),
               const SizedBox(height: 6),

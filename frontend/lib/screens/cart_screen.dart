@@ -65,7 +65,7 @@ class _CartScreenState extends State<CartScreen> {
                     children: [
                       // Title
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+                        padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
                         child: Text('CART',
                             style: Theme.of(context).textTheme.headlineLarge),
                       ),

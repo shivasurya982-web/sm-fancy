@@ -15,8 +15,6 @@ class ApiService {
 
   static const Duration _timeout = Duration(seconds: 15);
   static String? _resolvedBaseUrl;
-  static const String _productionBaseUrl =
-      'https://sm-fancy-backend.onrender.com/api';
 
   static Future<String> getActiveBaseUrl() async {
     if (_resolvedBaseUrl != null) return _resolvedBaseUrl!;
@@ -26,17 +24,38 @@ class ApiService {
       final sanitized = configuredBaseUrl.endsWith('/')
           ? configuredBaseUrl.substring(0, configuredBaseUrl.length - 1)
           : configuredBaseUrl;
-      _resolvedBaseUrl = sanitized.endsWith('/api')
-          ? sanitized
-          : '$sanitized/api';
+      _resolvedBaseUrl = sanitized.endsWith('/api') ? sanitized : '$sanitized/api';
       return _resolvedBaseUrl!;
     }
 
-    _resolvedBaseUrl = _productionBaseUrl;
+    if (kIsWeb) {
+      _resolvedBaseUrl = 'http://127.0.0.1:5050/api';
+      return _resolvedBaseUrl!;
+    }
+
+    final candidates = [
+      'http://127.0.0.1:5050/api',   // USB / ADB Reverse
+      'http://10.1.7.106:5050/api',  // Local Wi-Fi IP
+      'http://10.0.2.2:5050/api',   // Android Emulator
+      'https://sm-fancy-backend.onrender.com/api', // Cloud fallback
+    ];
+
+    for (final candidate in candidates) {
+      try {
+        final res = await http.get(Uri.parse('$candidate/health')).timeout(const Duration(seconds: 2));
+        if (res.statusCode == 200) {
+          debugPrint('✅ ApiService connected to live backend: $candidate');
+          _resolvedBaseUrl = candidate;
+          return _resolvedBaseUrl!;
+        }
+      } catch (_) {}
+    }
+
+    _resolvedBaseUrl = 'http://127.0.0.1:5050/api';
     return _resolvedBaseUrl!;
   }
 
-  static String get baseUrl => _resolvedBaseUrl ?? _productionBaseUrl;
+  static String get baseUrl => _resolvedBaseUrl ?? 'http://127.0.0.1:5050/api';
 
   static bool get isLoggedIn => _token != null && _token!.isNotEmpty;
 
@@ -84,55 +103,32 @@ class ApiService {
   }
 
   static Future<dynamic> get(String endpoint, {int retries = 1}) async {
-    final List<String> authRequired = [
-      '/cart',
-      '/orders',
-      '/auth/me',
-      '/users',
-      '/analytics/dashboard',
-      '/addresses',
-    ];
-    final needsAuth = authRequired.any(
-      (path) => endpoint == path || endpoint.startsWith('$path/'),
-    );
+    final List<String> authRequired = ['/cart', '/orders', '/auth/me', '/users', '/analytics/dashboard', '/addresses'];
+    final needsAuth = authRequired.any((path) => endpoint == path || endpoint.startsWith('$path/'));
 
     if (needsAuth && !isLoggedIn) return null;
-
+    
     final activeBase = await getActiveBaseUrl();
     final url = '$activeBase$endpoint';
     debugPrint('API GET Request: $url');
     try {
-      final response = await http
-          .get(Uri.parse(url), headers: await _headers())
-          .timeout(_timeout);
+      final response = await http.get(Uri.parse(url), headers: await _headers()).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
-      if (retries > 0 && _isNetworkError(e))
-        return get(endpoint, retries: retries - 1);
+      if (retries > 0 && _isNetworkError(e)) return get(endpoint, retries: retries - 1);
       _handleError(e, 'GET $endpoint');
     }
   }
 
-  static Future<dynamic> post(
-    String endpoint,
-    Map<String, dynamic> body, {
-    int retries = 0,
-  }) async {
+  static Future<dynamic> post(String endpoint, Map<String, dynamic> body, {int retries = 0}) async {
     final activeBase = await getActiveBaseUrl();
     final url = '$activeBase$endpoint';
     debugPrint('API POST Request: $url');
     try {
-      final response = await http
-          .post(
-            Uri.parse(url),
-            headers: await _headers(),
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
+      final response = await http.post(Uri.parse(url), headers: await _headers(), body: jsonEncode(body)).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
-      if (retries > 0 && _isNetworkError(e))
-        return post(endpoint, body, retries: retries - 1);
+      if (retries > 0 && _isNetworkError(e)) return post(endpoint, body, retries: retries - 1);
       _handleError(e, 'POST $endpoint');
     }
   }
@@ -140,13 +136,7 @@ class ApiService {
   static Future<dynamic> put(String endpoint, Map<String, dynamic> body) async {
     final activeBase = await getActiveBaseUrl();
     try {
-      final response = await http
-          .put(
-            Uri.parse('$activeBase$endpoint'),
-            headers: await _headers(),
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
+      final response = await http.put(Uri.parse('$activeBase$endpoint'), headers: await _headers(), body: jsonEncode(body)).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
       _handleError(e, 'PUT $endpoint');
@@ -156,9 +146,7 @@ class ApiService {
   static Future<dynamic> delete(String endpoint) async {
     final activeBase = await getActiveBaseUrl();
     try {
-      final response = await http
-          .delete(Uri.parse('$activeBase$endpoint'), headers: await _headers())
-          .timeout(_timeout);
+      final response = await http.delete(Uri.parse('$activeBase$endpoint'), headers: await _headers()).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
       _handleError(e, 'DELETE $endpoint');
@@ -166,9 +154,7 @@ class ApiService {
   }
 
   static bool _isNetworkError(dynamic e) {
-    return e is SocketException ||
-        e is http.ClientException ||
-        e is TimeoutException;
+    return e is SocketException || e is http.ClientException || e is TimeoutException;
   }
 
   static dynamic _handleResponse(http.Response response) {
@@ -180,20 +166,20 @@ class ApiService {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
     }
-
+    
     if (response.statusCode == 401 || response.statusCode == 403) {
       logout();
     }
-
-    final message = (data != null && data['message'] != null)
-        ? data['message'].toString()
+    
+    final message = (data != null && data['message'] != null) 
+        ? data['message'].toString() 
         : 'Request failed (${response.statusCode})';
     throw message;
   }
 
   static void _handleError(dynamic e, String context) {
     debugPrint('API Error [$context]: $e');
-    if (e is String) throw e;
+    if (e is String) throw e; 
 
     final errStr = e.toString();
     if (e is SocketException || errStr.contains('refused')) {
@@ -224,10 +210,7 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
-  static Future<Map<String, dynamic>> login(
-    String email,
-    String password,
-  ) async {
+  static Future<Map<String, dynamic>> login(String email, String password) async {
     final data = await post('/auth/login', {
       'email': email,
       'password': password,

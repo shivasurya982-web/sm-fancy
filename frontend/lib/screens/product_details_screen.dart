@@ -13,6 +13,7 @@ import '../services/product_service.dart';
 import '../config/theme.dart';
 import '../widgets/gold_button.dart';
 import '../widgets/product_card.dart';
+import '../widgets/image_viewer.dart';
 import 'checkout_screen.dart';
 import 'login_screen.dart';
 
@@ -485,10 +486,15 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   Widget _buildHeroImage(String url) {
-    return CachedNetworkImage(
-      imageUrl: url, fit: BoxFit.cover,
-      placeholder: (_, __) => Container(color: AppTheme.matteBlack),
-      errorWidget: (_, __, ___) => const Icon(Icons.diamond_outlined, color: AppTheme.platinumBorder),
+    return GestureDetector(
+      onTap: () {
+        FullScreenImageViewer.show(context, url, title: widget.product.name);
+      },
+      child: CachedNetworkImage(
+        imageUrl: url, fit: BoxFit.cover,
+        placeholder: (_, __) => Container(color: AppTheme.matteBlack),
+        errorWidget: (_, __, ___) => const Icon(Icons.diamond_outlined, color: AppTheme.platinumBorder),
+      ),
     );
   }
 

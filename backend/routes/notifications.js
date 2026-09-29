@@ -3,19 +3,21 @@ const router = express.Router();
 const Notification = require('../models/Notification');
 const { verifyToken, requireAdmin } = require('../middleware/auth');
 
-// GET /api/notifications - User: get own notifications
+// GET /api/notifications - Get relevant notifications
 router.get('/', verifyToken, async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const notifications = await Notification.find({
-      $or: [{ userId: req.userId }, { userId: null }],
-    })
+    const { page = 1, limit = 30 } = req.query;
+    const filter = req.userRole === 'admin'
+      ? { $or: [{ forAdmin: true }, { userId: req.userId }, { userId: null }] }
+      : { $or: [{ userId: req.userId }, { userId: null, forAdmin: false }] };
+
+    const notifications = await Notification.find(filter)
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
+      .skip((page - 1) * Number(limit))
       .limit(Number(limit));
 
     const unreadCount = await Notification.countDocuments({
-      $or: [{ userId: req.userId }, { userId: null }],
+      ...filter,
       isRead: false,
     });
 
@@ -25,21 +27,23 @@ router.get('/', verifyToken, async (req, res) => {
   }
 });
 
-// DELETE /api/notifications/clear-all - User deletes all own notifications
+// DELETE /api/notifications/clear-all
 router.delete('/clear-all', verifyToken, async (req, res) => {
     try {
-        // Only delete private notifications for this user
-        await Notification.deleteMany({ userId: req.userId });
+        const filter = req.userRole === 'admin'
+          ? { $or: [{ forAdmin: true }, { userId: req.userId }] }
+          : { userId: req.userId };
+        await Notification.deleteMany(filter);
         res.json({ message: 'Notifications cleared' });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 });
 
-// DELETE /api/notifications/:id - User deletes single notification
+// DELETE /api/notifications/:id
 router.delete('/:id', verifyToken, async (req, res) => {
     try {
-        await Notification.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+        await Notification.findOneAndDelete({ _id: req.params.id });
         res.json({ message: 'Notification deleted' });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -49,10 +53,11 @@ router.delete('/:id', verifyToken, async (req, res) => {
 // PUT /api/notifications/mark-all-read
 router.put('/mark-all-read', verifyToken, async (req, res) => {
   try {
-    await Notification.updateMany(
-      { $or: [{ userId: req.userId }, { userId: null }], isRead: false },
-      { isRead: true }
-    );
+    const filter = req.userRole === 'admin'
+      ? { $or: [{ forAdmin: true }, { userId: req.userId }, { userId: null }], isRead: false }
+      : { $or: [{ userId: req.userId }, { userId: null, forAdmin: false }], isRead: false };
+
+    await Notification.updateMany(filter, { isRead: true });
     res.json({ message: 'All notifications marked as read' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -71,7 +76,10 @@ const createNotification = async (app, data) => {
 
         const io = app.get('io');
         if (io) {
-            if (data.userId) {
+            if (data.forAdmin) {
+                io.emit('new_admin_notification', notification);
+                io.emit('new_notification', notification);
+            } else if (data.userId) {
                 io.to(data.userId.toString()).emit('new_notification', notification);
             } else {
                 io.emit('new_notification', notification);

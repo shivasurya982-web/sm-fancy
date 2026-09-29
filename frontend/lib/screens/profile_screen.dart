@@ -314,7 +314,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Stack(
             children: [
               SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 120),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

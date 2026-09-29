@@ -4,6 +4,7 @@ const notificationSchema = new mongoose.Schema(
   {
     // null = broadcast to all users
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    forAdmin: { type: Boolean, default: false },
 
     title: { type: String, required: true },
     body: { type: String, required: true },
@@ -11,14 +12,14 @@ const notificationSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ['order', 'offer', 'promotion', 'system', 'chat'],
+      enum: ['order', 'offer', 'promotion', 'system', 'chat', 'complaint', 'stock', 'broadcast'],
       default: 'system',
     },
 
     // Deep link data
     data: {
-      screen: { type: String }, // e.g. 'OrderDetails'
-      id: { type: String },     // order/product id
+      screen: { type: String },
+      id: { type: String },
     },
 
     isRead: { type: Boolean, default: false },

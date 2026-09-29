@@ -36,7 +36,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
                 child: Text(
                   'WISHLIST',
                   style: Theme.of(context).textTheme.headlineLarge,

@@ -48,11 +48,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
             constraints: BoxConstraints(maxWidth: isWeb ? 500 : double.infinity),
             child: CustomScrollView(
               slivers: [
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                const SliverToBoxAdapter(child: SizedBox(height: 12)),
                 
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(32, 0, 32, 24),
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
                     child: Text(
                       'ORDERS',
                       style: Theme.of(context).textTheme.headlineLarge?.copyWith(

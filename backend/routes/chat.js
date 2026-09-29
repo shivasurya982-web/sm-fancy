@@ -3,6 +3,7 @@ const router = express.Router();
 const Chat = require('../models/Chat');
 const User = require('../models/User');
 const { verifyToken } = require('./auth');
+const { createNotification } = require('./notifications');
 
 // GET CHAT MESSAGES
 router.get('/messages/:customerId', verifyToken, async (req, res) => {
@@ -115,7 +116,19 @@ router.post('/messages', verifyToken, async (req, res) => {
 
     await chat.save();
 
-    // Trigger Socket.io (if implemented)
+    // Notify admin if message is from customer
+    if (req.userRole !== 'admin') {
+      const user = await User.findById(req.userId);
+      await createNotification(req.app, {
+        forAdmin: true,
+        title: `Message from ${user?.name || 'Customer'}`,
+        body: message || (image ? 'Sent an image' : 'Shared location'),
+        type: 'chat',
+        data: { customerId: req.userId, screen: 'Chat' }
+      });
+    }
+
+    // Trigger Socket.io
     const io = req.app.get('io');
     if (io) {
         io.to(roomId).emit('receive_message', chat);
