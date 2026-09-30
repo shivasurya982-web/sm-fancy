@@ -12,7 +12,6 @@ Thumbs.db
 # Backend
 backend/node_modules/
 backend/.env
-backend/package-lock.json
 
 # Frontend
 frontend/.dart_tool/
@@ -21,8 +20,6 @@ frontend/.flutter-plugins-dependencies
 frontend/.metadata
 frontend/build/
 frontend/node_modules/
-frontend/package-lock.json
-frontend/pubspec.lock
 
 # Android specific
 frontend/android/.gradle/
