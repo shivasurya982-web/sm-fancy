@@ -49,10 +49,17 @@ flutter:
 
   assets:
     - assets/images/sm_fancy_icon.png
-    - assets/images/
+    - assets/images/logo1.png
+    - assets/images/banner4.jpg
+    - assets/images/banner5.jpg
     - assets/images/products/
     - assets/images/category_icons/
-    - assets/animations/
+    - assets/fonts/
+
+  fonts:
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-Regular.ttf
 
 flutter_launcher_icons:
   android: true

@@ -7,18 +7,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'socket_service.dart';
 
 class ApiService {
+  static const String _productionBaseUrl = 'https://sm-fancy-backend.onrender.com/api';
+
   static String? _token;
   static String? currentUserId;
   static String currentUserRole = 'user';
   static String currentUserName = '';
   static String currentUserEmail = '';
 
-  static const Duration _timeout = Duration(seconds: 15);
+  static const Duration _timeout = Duration(seconds: 20);
   static String? _resolvedBaseUrl;
 
   static Future<String> getActiveBaseUrl() async {
     if (_resolvedBaseUrl != null) return _resolvedBaseUrl!;
 
+    // 1. Check if explicitly configured via --dart-define=API_BASE_URL=...
     const configuredBaseUrl = String.fromEnvironment('API_BASE_URL');
     if (configuredBaseUrl.isNotEmpty) {
       final sanitized = configuredBaseUrl.endsWith('/')
@@ -28,34 +31,44 @@ class ApiService {
       return _resolvedBaseUrl!;
     }
 
-    if (kIsWeb) {
-      _resolvedBaseUrl = 'http://127.0.0.1:5050/api';
+    // 2. In Release Mode (Production Release APK), ALWAYS use Render Production Backend
+    if (kReleaseMode) {
+      _resolvedBaseUrl = _productionBaseUrl;
       return _resolvedBaseUrl!;
     }
 
+    // 3. For Web, default to production Render URL
+    if (kIsWeb) {
+      _resolvedBaseUrl = _productionBaseUrl;
+      return _resolvedBaseUrl!;
+    }
+
+    // 4. Debug / Local Dev Mode Probing
     final candidates = [
+      _productionBaseUrl,           // Render Cloud Production
       'http://127.0.0.1:5050/api',   // USB / ADB Reverse
       'http://10.1.7.106:5050/api',  // Local Wi-Fi IP
       'http://10.0.2.2:5050/api',   // Android Emulator
-      'https://sm-fancy-backend.onrender.com/api', // Cloud fallback
     ];
 
     for (final candidate in candidates) {
       try {
-        final res = await http.get(Uri.parse('$candidate/health')).timeout(const Duration(seconds: 2));
+        final res = await http
+            .get(Uri.parse('$candidate/health'))
+            .timeout(const Duration(seconds: 4));
         if (res.statusCode == 200) {
-          debugPrint('✅ ApiService connected to live backend: $candidate');
+          debugPrint('✅ ApiService connected to backend: $candidate');
           _resolvedBaseUrl = candidate;
           return _resolvedBaseUrl!;
         }
       } catch (_) {}
     }
 
-    _resolvedBaseUrl = 'http://127.0.0.1:5050/api';
+    _resolvedBaseUrl = _productionBaseUrl;
     return _resolvedBaseUrl!;
   }
 
-  static String get baseUrl => _resolvedBaseUrl ?? 'http://127.0.0.1:5050/api';
+  static String get baseUrl => _resolvedBaseUrl ?? _productionBaseUrl;
 
   static bool get isLoggedIn => _token != null && _token!.isNotEmpty;
 
@@ -69,7 +82,7 @@ class ApiService {
     currentUserName = prefs.getString('userName') ?? '';
     currentUserEmail = prefs.getString('userEmail') ?? '';
 
-    if (currentUserId != null) {
+    if (currentUserId != null && currentUserId!.isNotEmpty) {
       SocketService.connect(currentUserId!);
     }
   }
@@ -96,7 +109,7 @@ class ApiService {
 
   static Future<Map<String, String>> _headers() async {
     final headers = <String, String>{'Content-Type': 'application/json'};
-    if (_token != null) {
+    if (_token != null && _token!.isNotEmpty) {
       headers['Authorization'] = 'Bearer $_token';
     }
     return headers;
@@ -183,9 +196,9 @@ class ApiService {
 
     final errStr = e.toString();
     if (e is SocketException || errStr.contains('refused')) {
-      throw 'Server unreachable ($baseUrl). Ensure server is running.';
+      throw 'Server unreachable ($baseUrl). Ensure your internet connection is active.';
     } else if (e is TimeoutException || errStr.contains('Timeout')) {
-      throw 'Connection timed out ($baseUrl).';
+      throw 'Connection timed out ($baseUrl). The server may be starting up, please try again.';
     } else {
       throw 'An unexpected error occurred: $e';
     }
