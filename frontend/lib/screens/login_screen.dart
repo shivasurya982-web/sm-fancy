@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../config/theme.dart';
 import '../widgets/gold_button.dart';
 import '../widgets/sparkle_background.dart';
+import '../widgets/glass_toast.dart';
 import 'admin_dashboard_screen.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
@@ -32,7 +33,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
-    if (email.isEmpty || password.isEmpty) return;
+    if (email.isEmpty || password.isEmpty) {
+      showGlassToast(context, 'Please enter your email and password.', isError: true, title: 'LOGIN REQUIRED');
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {
@@ -40,6 +44,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       
       final role = response['user']['role'] ?? 'user';
+      showGlassToast(context, 'Welcome back, ${response['user']['name'] ?? 'User'}!', isError: false, title: 'LOGIN SUCCESSFUL');
+
       if (role == 'admin') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardScreen()));
       } else {
@@ -47,8 +53,11 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      final msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('Error: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error));
+      var msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('Error: ', '');
+      if (msg.toLowerCase().contains('invalid credentials')) {
+        msg = 'Invalid email or password';
+      }
+      showGlassToast(context, msg, isError: true, title: 'LOGIN FAILED');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

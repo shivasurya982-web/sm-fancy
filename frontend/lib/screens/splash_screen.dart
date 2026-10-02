@@ -16,7 +16,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  String _tagline = 'The Future of Jewelry.';
+  String _tagline = 'Shine Bright, Live Bold.';
 
   @override
   void initState() {

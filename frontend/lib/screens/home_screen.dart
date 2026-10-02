@@ -30,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _minPrice = 0;
   double _maxPrice = 100000;
   bool _onlyInStock = false;
+  double _minRating = 0.0;
   
   final TextEditingController _searchController = TextEditingController();
 
@@ -106,12 +107,19 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_onlyInStock) {
       filtered = filtered.where((p) => p.stock > 0).toList();
     }
+
+    // Rating Filter
+    if (_minRating > 0) {
+      filtered = filtered.where((p) => p.averageRating >= _minRating).toList();
+    }
     
     // Sort
     if (_sortBy == 'Price: Low to High') {
       filtered.sort((a, b) => a.price.compareTo(b.price));
     } else if (_sortBy == 'Price: High to Low') {
       filtered.sort((a, b) => b.price.compareTo(a.price));
+    } else if (_sortBy == 'Highest Rated') {
+      filtered.sort((a, b) => b.averageRating.compareTo(a.averageRating));
     }
     
     setState(() => _filteredProducts = filtered);
@@ -147,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
           slivers: [
             const SliverToBoxAdapter(child: SizedBox(height: 10)),
 
-            // 1. Search Bar
+            // Search Bar
             SliverPadding(
               padding: EdgeInsets.symmetric(horizontal: isNarrow ? 16 : 24, vertical: 10),
               sliver: SliverToBoxAdapter(
@@ -244,6 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
                          double tempMin = _minPrice;
                          double tempMax = _maxPrice;
                          bool tempStock = _onlyInStock;
+                         double tempRating = _minRating;
 
                          showModalBottomSheet(
                            context: context,
@@ -251,7 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
                            isScrollControlled: true,
                            builder: (ctx) => StatefulBuilder(
                              builder: (context, setSheetState) => DraggableScrollableSheet(
-                               initialChildSize: 0.75,
+                               initialChildSize: 0.80,
                                minChildSize: 0.4,
                                maxChildSize: 0.95,
                                builder: (_, scrollController) => Container(
@@ -278,11 +287,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                    const Text('SORT BY', style: TextStyle(color: AppTheme.coolGrey, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
                                    const SizedBox(height: 12),
                                    
-                                   ...['Newest', 'Price: Low to High', 'Price: High to Low'].map((opt) => GestureDetector(
+                                   ...['Newest', 'Price: Low to High', 'Price: High to Low', 'Highest Rated'].map((opt) => GestureDetector(
                                       onTap: () => setSheetState(() => tempSort = opt),
                                       child: Container(
                                         width: double.infinity,
-                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        padding: const EdgeInsets.symmetric(vertical: 14),
                                         child: Row(
                                           children: [
                                             Text(opt.toUpperCase(), style: TextStyle(color: tempSort == opt ? AppTheme.polishedSilver : AppTheme.coolGrey, fontWeight: tempSort == opt ? FontWeight.w900 : FontWeight.w400, fontSize: 12, letterSpacing: 1)),
@@ -292,6 +301,35 @@ class _HomeScreenState extends State<HomeScreen> {
                                         ),
                                       ),
                                    )),
+
+                                   const SizedBox(height: 24),
+                                   const Text('RATING FILTER', style: TextStyle(color: AppTheme.coolGrey, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                                   const SizedBox(height: 12),
+                                   SingleChildScrollView(
+                                     scrollDirection: Axis.horizontal,
+                                     child: Row(
+                                       children: [
+                                         0.0, 4.0, 3.0, 2.0
+                                       ].map((rVal) {
+                                         final isSelected = tempRating == rVal;
+                                         final label = rVal == 0.0 ? 'ALL RATINGS' : '${rVal.toInt()}★ & ABOVE';
+                                         return Padding(
+                                           padding: const EdgeInsets.only(right: 8),
+                                           child: ChoiceChip(
+                                             label: Text(label, style: TextStyle(fontSize: 9, fontWeight: isSelected ? FontWeight.w900 : FontWeight.w500, letterSpacing: 0.5)),
+                                             selected: isSelected,
+                                             onSelected: (val) {
+                                               if (val) setSheetState(() => tempRating = rVal);
+                                             },
+                                             backgroundColor: Colors.white.withValues(alpha: 0.05),
+                                             selectedColor: AppTheme.brushedPlatinum,
+                                             labelStyle: TextStyle(color: isSelected ? Colors.black : AppTheme.coolGrey),
+                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100), side: BorderSide(color: isSelected ? AppTheme.brushedPlatinum : AppTheme.glassBorder, width: 0.5)),
+                                           ),
+                                         );
+                                       }).toList(),
+                                     ),
+                                   ),
 
                                    const SizedBox(height: 24),
                                    Row(
@@ -340,6 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           _minPrice = tempMin;
                                           _maxPrice = tempMax;
                                           _onlyInStock = tempStock;
+                                          _minRating = tempRating;
                                           _applyFilterAndSort();
                                           Navigator.pop(ctx);
                                        },

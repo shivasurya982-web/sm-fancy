@@ -31,31 +31,26 @@ class ApiService {
       return _resolvedBaseUrl!;
     }
 
-    // 2. In Release Mode (Production Release APK), ALWAYS use Render Production Backend
+    // 2. In Release Mode (Production Release APK), use Render Production Backend
     if (kReleaseMode) {
       _resolvedBaseUrl = _productionBaseUrl;
       return _resolvedBaseUrl!;
     }
 
-    // 3. For Web, default to production Render URL
-    if (kIsWeb) {
-      _resolvedBaseUrl = _productionBaseUrl;
-      return _resolvedBaseUrl!;
-    }
-
-    // 4. Debug / Local Dev Mode Probing
+    // 3. Probing candidates: Probe local dev servers FIRST so local fixes take effect
     final candidates = [
-      _productionBaseUrl,           // Render Cloud Production
-      'http://127.0.0.1:5050/api',   // USB / ADB Reverse
+      'http://127.0.0.1:5050/api',   // Local Dev / USB Reverse
+      'http://localhost:5050/api',   // Localhost
+      'http://10.0.2.2:5050/api',    // Android Emulator
       'http://10.1.7.106:5050/api',  // Local Wi-Fi IP
-      'http://10.0.2.2:5050/api',   // Android Emulator
+      _productionBaseUrl,            // Render Cloud Production
     ];
 
     for (final candidate in candidates) {
       try {
         final res = await http
             .get(Uri.parse('$candidate/health'))
-            .timeout(const Duration(seconds: 4));
+            .timeout(const Duration(seconds: 3));
         if (res.statusCode == 200) {
           debugPrint('✅ ApiService connected to backend: $candidate');
           _resolvedBaseUrl = candidate;

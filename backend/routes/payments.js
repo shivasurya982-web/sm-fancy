@@ -10,17 +10,6 @@ const { verifyToken } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
 const { recordOrderSale } = require('../services/analyticsService');
 
-// =============================================================================
-// Legitimate UPI Provider Integration (PhonePe / Cashfree / Custom Bank API)
-// =============================================================================
-// Note: Replace these with your actual Merchant Provider credentials
-const PROVIDER_CONFIG = {
-    MERCHANT_ID: process.env.UPI_MERCHANT_ID || 'FW_MERCHANT_001',
-    SALT_KEY: process.env.UPI_SALT_KEY || 'your-provider-salt-key',
-    SALT_INDEX: process.env.UPI_SALT_INDEX || '1',
-    WEBHOOK_URL: (process.env.FRONTEND_URL || 'http://localhost:5050') + '/api/payments/webhook'
-};
-
 // POST /api/payments/create-order - Prepare order for Dynamic UPI QR
 router.post('/create-order', verifyToken, async (req, res) => {
   try {
@@ -36,7 +25,7 @@ router.post('/create-order', verifyToken, async (req, res) => {
         return res.status(400).json({ message: 'No items in cart' });
     }
 
-    // 1. Calculate and Validate Amount on Backend (Absolute Rule)
+    // 1. Calculate and Validate Amount on Backend
     let calculatedSubtotal = 0;
     for (const item of items) {
         const product = await Product.findById(item.product);
@@ -59,15 +48,16 @@ router.post('/create-order', verifyToken, async (req, res) => {
     if (totalAmount <= 0) return res.status(400).json({ message: 'Invalid total amount' });
 
     // 2. Create Order in DB with status PAYMENT_PENDING
-    // Generate a unique Reference No for UPI reconciliation
     const upiRef = `FW${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const orderNumber = await Order.generateUniqueOrderNumber();
 
     const order = new Order({
         userId: req.userId,
+        orderNumber,
         items,
         address,
         paymentMethod: 'UPI',
-        paymentStatus: 'Pending', // Specifically marks it as unpaid
+        paymentStatus: 'Pending',
         subtotal: calculatedSubtotal,
         shipping,
         tax,
@@ -82,14 +72,22 @@ router.post('/create-order', verifyToken, async (req, res) => {
         ],
     });
 
-    await order.save();
+    try {
+      await order.save();
+    } catch (saveErr) {
+      if (saveErr.code === 11000) {
+        order.orderNumber = `FW${Date.now()}`;
+        await order.save();
+      } else {
+        throw saveErr;
+      }
+    }
 
     // 3. Fetch Merchant VPA from Settings
     const settings = await AppSettings.findOne();
     const vpa = settings?.upiId || 'shivasurya982-1@oksbi';
 
     // 4. Construct Dynamic UPI Intent URL
-    // Format: upi://pay?pa=VPA&pn=NAME&tr=REF&am=AMOUNT&cu=INR
     const upiPayload = `upi://pay?pa=${vpa}&pn=${encodeURIComponent('FANCY WORLD')}&tr=${upiRef}&am=${totalAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Order ' + order.orderNumber)}`;
 
     res.json({
@@ -97,7 +95,7 @@ router.post('/create-order', verifyToken, async (req, res) => {
         fancyWorldOrderId: order._id,
         orderNumber: order.orderNumber,
         amount: totalAmount,
-        upiPayload: upiPayload, // Flutter will use this to generate the QR
+        upiPayload: upiPayload,
         upiReferenceNo: upiRef
     });
 
@@ -107,37 +105,28 @@ router.post('/create-order', verifyToken, async (req, res) => {
   }
 });
 
-// POST /api/payments/webhook - Secure Webhook from Payment Provider/Bank
+// POST /api/payments/webhook
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
-    // 1. Verify Webhook Signature (Legitimate Security)
     const signature = req.headers['x-provider-signature'];
     if (!signature) return res.status(401).send('Missing signature');
-
-    // Verification logic varies by provider (e.g. SHA256 hashing with Salt)
-    // if (!verifySignature(req.body, signature)) return res.status(403).send('Invalid signature');
 
     const payload = JSON.parse(req.body.toString());
     const { transactionId, merchantReference, amount, status, utr } = payload;
 
-    // 2. Identify the Order
     const order = await Order.findOne({ upiReferenceNo: merchantReference });
     if (!order) return res.status(404).send('Order not found');
 
-    // 3. Prevent Duplicate Processing (Idempotency)
     if (order.paymentStatus === 'Paid') return res.json({ success: true, message: 'Already processed' });
 
-    // 4. Validate Amount and Status
     if (status === 'SUCCESS' && parseFloat(amount) === order.total) {
         order.paymentStatus = 'Paid';
         order.upiTransactionId = utr || transactionId;
         order.status = 'Confirmed';
-        order.paymentDetails = payload; // Audit Trail
+        order.paymentDetails = payload;
         order.timeline.push({ status: 'Confirmed', message: 'Payment verified via automated gateway', isCompleted: true });
 
         await order.save();
-
-        // Background Tasks: Stock, Analytics, Points, Notifications
         await handlePostPayment(req.app, order);
 
         return res.json({ success: true });
@@ -154,7 +143,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
   }
 });
 
-// GET /api/payments/status/:orderId - Polling for payment status
+// GET /api/payments/status/:orderId
 router.get('/status/:orderId', verifyToken, async (req, res) => {
     try {
         const order = await Order.findById(req.params.orderId);
@@ -170,21 +159,17 @@ router.get('/status/:orderId', verifyToken, async (req, res) => {
 });
 
 async function handlePostPayment(app, order) {
-    // Reduce Stock
     for (const item of order.items) {
         if (item.product) {
             await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } });
         }
     }
 
-    // Analytics
     await recordOrderSale(order);
 
-    // Points
     const points = Math.floor(order.total / 100);
     await User.findByIdAndUpdate(order.userId, { $inc: { loyaltyPoints: points } });
 
-    // Notification
     const productNames = order.items.map(i => i.name).join(', ');
     await createNotification(app, {
         userId: order.userId,

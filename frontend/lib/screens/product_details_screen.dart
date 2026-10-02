@@ -2,6 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/product_model.dart';
 import '../services/cart_service.dart';
 import '../services/wishlist_service.dart';
@@ -9,10 +11,13 @@ import '../models/wishlist_item.dart';
 import '../services/api_service.dart';
 import '../services/user_service.dart';
 import '../services/product_service.dart';
+import '../services/review_service.dart';
+import '../services/upload_service.dart';
 import '../config/theme.dart';
 import '../widgets/gold_button.dart';
 import '../widgets/product_card.dart';
 import '../widgets/image_viewer.dart';
+import '../widgets/glass_toast.dart';
 import 'checkout_screen.dart';
 import 'login_screen.dart';
 
@@ -32,11 +37,19 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   List<ProductModel> _relatedProducts = [];
   bool _isLoadingRelated = true;
 
+  List<ReviewModel> _reviews = [];
+  int _totalReviews = 0;
+  double _avgRating = 5.0;
+  bool _isLoadingReviews = true;
+  bool _canReview = false;
+  String? _eligibleOrderId;
+
   @override
   void initState() {
     super.initState();
     UserService.addToRecentlyViewed(widget.product.id);
     _loadRelatedProducts();
+    _loadReviews();
   }
 
   @override
@@ -46,6 +59,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       _selectedQty = 1;
       _activeImgIdx = 0;
       _loadRelatedProducts();
+      _loadReviews();
     }
   }
 
@@ -64,6 +78,39 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => _isLoadingRelated = false);
+    }
+  }
+
+  Future<void> _loadReviews() async {
+    setState(() => _isLoadingReviews = true);
+    try {
+      final data = await ReviewService.fetchReviews(widget.product.id);
+      if (mounted) {
+        final list = data['reviews'] as List<ReviewModel>? ?? [];
+        final total = data['total'] as int? ?? list.length;
+        double avg = 5.0;
+        if (list.isNotEmpty) {
+          final sum = list.fold<int>(0, (acc, r) => acc + r.rating);
+          avg = sum / list.length;
+        }
+        setState(() {
+          _reviews = list;
+          _totalReviews = total;
+          _avgRating = avg;
+          _isLoadingReviews = false;
+        });
+      }
+      if (ApiService.isLoggedIn) {
+        final elig = await ReviewService.checkEligibility(widget.product.id);
+        if (mounted) {
+          setState(() {
+            _canReview = elig['canReview'] == true;
+            _eligibleOrderId = elig['orderId']?.toString();
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingReviews = false);
     }
   }
 
@@ -100,6 +147,176 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             child: const Text('LOG IN'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showRatingDialog() {
+    int selectedRating = 5;
+    final reviewCtrl = TextEditingController();
+    List<String> reviewImageUrls = [];
+    bool isUploadingImage = false;
+    bool isSubmitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+          padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
+          decoration: const BoxDecoration(
+            color: AppTheme.deepCharcoal,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            border: Border(top: BorderSide(color: AppTheme.glassBorder, width: 0.5)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(2)))),
+                const SizedBox(height: 20),
+                Text('RATE & REVIEW', style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontSize: 18, letterSpacing: 1.5)),
+                const SizedBox(height: 8),
+                Text(widget.product.name.toUpperCase(), style: const TextStyle(color: AppTheme.coolGrey, fontSize: 11, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                
+                // Star Rating Picker
+                Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (idx) {
+                      final starNum = idx + 1;
+                      return IconButton(
+                        iconSize: 32,
+                        icon: Icon(
+                          starNum <= selectedRating ? Icons.star_rounded : Icons.star_border_rounded,
+                          color: starNum <= selectedRating ? Colors.amber : AppTheme.coolGrey,
+                        ),
+                        onPressed: () {
+                          setSheetState(() => selectedRating = starNum);
+                        },
+                      );
+                    }),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, bottom: 8),
+                  child: Text('YOUR REVIEW', style: TextStyle(color: Colors.white60, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                ),
+                TextField(
+                  controller: reviewCtrl,
+                  maxLines: 4,
+                  style: const TextStyle(color: AppTheme.polishedSilver, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Share your experience with this piece...',
+                    hintStyle: const TextStyle(color: Colors.white24),
+                    contentPadding: const EdgeInsets.all(18),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppTheme.glassBorder)),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, bottom: 8),
+                  child: Text('ATTACH PHOTOS', style: TextStyle(color: Colors.white60, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                ),
+
+                if (reviewImageUrls.isNotEmpty) ...[
+                  SizedBox(
+                    height: 70,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: reviewImageUrls.length,
+                      itemBuilder: (ctx, i) => Container(
+                        margin: const EdgeInsets.only(right: 10),
+                        width: 70,
+                        height: 70,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppTheme.glassBorder),
+                          image: DecorationImage(image: NetworkImage(reviewImageUrls[i]), fit: BoxFit.cover),
+                        ),
+                        child: Align(
+                          alignment: Alignment.topRight,
+                          child: GestureDetector(
+                            onTap: () {
+                              setSheetState(() { reviewImageUrls.removeAt(i); });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(color: AppTheme.error, shape: BoxShape.circle),
+                              child: const Icon(Icons.close, size: 12, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                OutlinedButton.icon(
+                  onPressed: isUploadingImage ? null : () async {
+                    final picker = ImagePicker();
+                    final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
+                    if (img != null) {
+                      setSheetState(() => isUploadingImage = true);
+                      final url = await UploadService.uploadImage(img);
+                      if (url != null) {
+                        setSheetState(() { reviewImageUrls.add(url); });
+                      }
+                      setSheetState(() => isUploadingImage = false);
+                    }
+                  },
+                  icon: isUploadingImage 
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brushedPlatinum))
+                    : const Icon(Icons.add_a_photo_outlined, size: 18),
+                  label: Text(isUploadingImage ? 'UPLOADING...' : 'ADD PHOTO', style: const TextStyle(fontSize: 10, letterSpacing: 1, fontWeight: FontWeight.bold)),
+                ),
+
+                const SizedBox(height: 28),
+                GoldButton(
+                  label: 'SUBMIT REVIEW',
+                  isLoading: isSubmitting,
+                  onPressed: isSubmitting ? null : () async {
+                    if (reviewCtrl.text.trim().isEmpty) {
+                      showGlassToast(ctx, 'Please write a short review.', isError: true);
+                      return;
+                    }
+                    setSheetState(() => isSubmitting = true);
+                    try {
+                      await ReviewService.submitReview(
+                        productId: widget.product.id,
+                        orderId: _eligibleOrderId,
+                        rating: selectedRating,
+                        review: reviewCtrl.text.trim(),
+                        images: reviewImageUrls,
+                      );
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                        showGlassToast(context, 'Thank you! Your review has been submitted.', isError: false, title: 'REVIEW SUBMITTED');
+                        _loadReviews();
+                      }
+                    } catch (e) {
+                      if (ctx.mounted) {
+                        final msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('Error: ', '');
+                        showGlassToast(ctx, msg, isError: true);
+                      }
+                    } finally {
+                      if (ctx.mounted) setSheetState(() => isSubmitting = false);
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -203,7 +420,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 80),
+                const SizedBox(height: 60),
+                _buildReviewsSection(),
+                const SizedBox(height: 60),
                 _buildRelatedProductsSection(),
                 const SizedBox(height: 100),
               ],
@@ -290,6 +509,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   _buildDescriptionAndSpecs(),
                   const SizedBox(height: 28),
                   _buildPurchaseSection(),
+                  const SizedBox(height: 36),
+                  _buildReviewsSection(),
                   const SizedBox(height: 40),
                   _buildRelatedProductsSection(),
                   const SizedBox(height: 80),
@@ -310,7 +531,26 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(p.category.toUpperCase(), style: const TextStyle(color: AppTheme.coolGrey, fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.w900)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(p.category.toUpperCase(), style: const TextStyle(color: AppTheme.coolGrey, fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.w900)),
+            Row(
+              children: [
+                const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  _avgRating.toStringAsFixed(1),
+                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  ' ($_totalReviews)',
+                  style: const TextStyle(color: AppTheme.coolGrey, fontSize: 10),
+                ),
+              ],
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -397,7 +637,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 await CartService.addToCart(p, quantity: _selectedQty);
                 if (mounted) {
                   setState(() => _isAdding = false);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to Cart'), duration: Duration(seconds: 1)));
+                  showGlassToast(context, 'Added to Cart', isError: false, title: 'BAG UPDATED');
                 }
               }, isGlass: true),
             ),
@@ -423,6 +663,149 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
+  Widget _buildReviewsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(color: AppTheme.glassBorder, thickness: 1),
+        const SizedBox(height: 24),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('CUSTOMER REVIEWS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+            Text('$_totalReviews REVIEWS', style: const TextStyle(color: AppTheme.coolGrey, fontSize: 9, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        if (_canReview) ...[
+          GestureDetector(
+            onTap: _showRatingDialog,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+              decoration: BoxDecoration(
+                color: AppTheme.brushedPlatinum.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(100),
+                border: Border.all(color: AppTheme.brushedPlatinum, width: 1),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.rate_review_outlined, color: AppTheme.brushedPlatinum, size: 16),
+                  SizedBox(width: 10),
+                  Text('WRITE A REVIEW FOR THIS PRODUCT', style: TextStyle(color: AppTheme.brushedPlatinum, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.2)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+
+        if (_isLoadingReviews)
+          const Center(child: CircularProgressIndicator(color: AppTheme.brushedPlatinum))
+        else if (_reviews.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: AppTheme.premiumCard(radius: 20),
+            child: const Center(
+              child: Text(
+                'No reviews yet for this product. Delivered orders can be reviewed from the order page or here.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppTheme.coolGrey, fontSize: 11, height: 1.4),
+              ),
+            ),
+          )
+        else
+          ..._reviews.map((rev) => _buildReviewCard(rev)),
+      ],
+    );
+  }
+
+  Widget _buildReviewCard(ReviewModel rev) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.premiumCard(radius: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: Colors.white.withValues(alpha: 0.1),
+                child: rev.userAvatar != null && rev.userAvatar!.isNotEmpty
+                    ? ClipOval(child: CachedNetworkImage(imageUrl: rev.userAvatar!, fit: BoxFit.cover, width: 28, height: 28))
+                    : Text(rev.userName.isNotEmpty ? rev.userName[0].toUpperCase() : 'C', style: const TextStyle(fontSize: 12, color: AppTheme.polishedSilver, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(rev.userName.toUpperCase(), style: const TextStyle(color: AppTheme.polishedSilver, fontWeight: FontWeight.w900, fontSize: 11)),
+                        if (rev.isVerifiedPurchase) ...[
+                          const SizedBox(width: 6),
+                          const Icon(Icons.verified_rounded, color: AppTheme.brushedPlatinum, size: 12),
+                        ],
+                      ],
+                    ),
+                    Text(DateFormat('dd MMM yyyy').format(rev.createdAt), style: const TextStyle(color: Colors.white24, fontSize: 8)),
+                  ],
+                ),
+              ),
+              Row(
+                children: List.generate(5, (idx) {
+                  return Icon(
+                    idx < rev.rating ? Icons.star_rounded : Icons.star_border_rounded,
+                    color: idx < rev.rating ? Colors.amber : Colors.white10,
+                    size: 14,
+                  );
+                }),
+              ),
+            ],
+          ),
+          if (rev.review.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(rev.review, style: const TextStyle(color: AppTheme.coolGrey, fontSize: 12, height: 1.4)),
+          ],
+          if (rev.images.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 60,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: rev.images.length,
+                itemBuilder: (ctx, idx) => GestureDetector(
+                  onTap: () {
+                    FullScreenImageViewer.show(context, rev.images[idx], title: '${rev.userName}\'s Photo');
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.glassBorder, width: 0.5),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: CachedNetworkImage(imageUrl: rev.images[idx], fit: BoxFit.cover),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildRelatedProductsSection() {
     if (_isLoadingRelated) return const Center(child: CircularProgressIndicator(color: AppTheme.brushedPlatinum));
     if (_relatedProducts.isEmpty) return const SizedBox.shrink();
@@ -431,7 +814,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Divider(color: AppTheme.glassBorder, thickness: 1),
-        const SizedBox(height: 28),
+        const SizedBox(height: 24),
         const Text('MORE FROM THIS CATEGORY', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2.5)),
         const SizedBox(height: 10),
         Text('More ${widget.product.category}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver)),

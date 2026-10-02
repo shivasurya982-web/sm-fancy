@@ -2,7 +2,42 @@ const express = require('express');
 const router = express.Router();
 const Review = require('../models/Review');
 const Order = require('../models/Order');
+const Product = require('../models/Product');
 const { verifyToken, optionalAuth } = require('../middleware/auth');
+
+// GET /api/reviews/check-eligible/:productId - Check if user has unreviewed delivered order for product
+router.get('/check-eligible/:productId', verifyToken, async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    // Find all delivered orders for this user containing this product
+    const deliveredOrders = await Order.find({
+      userId: req.userId,
+      status: { $regex: /^delivered$/i },
+      'items.product': productId,
+    });
+
+    if (deliveredOrders.length === 0) {
+      return res.json({ canReview: false, hasReviewed: false, reason: 'No delivered purchase found for this product.' });
+    }
+
+    // Find all reviews submitted by this user for this product
+    const userReviews = await Review.find({ userId: req.userId, productId });
+    const reviewedOrderIds = userReviews.map(r => r.orderId?.toString()).filter(Boolean);
+
+    // Find an unreviewed delivered order
+    const unreviewedOrder = deliveredOrders.find(o => !reviewedOrderIds.includes(o._id.toString()));
+
+    if (unreviewedOrder) {
+      return res.json({ canReview: true, hasReviewed: false, orderId: unreviewedOrder._id });
+    }
+
+    // If no unreviewed order but orders exist and user has reviewed, allow updating or show reviewed status
+    res.json({ canReview: false, hasReviewed: true, message: 'All delivered purchases for this item have been reviewed.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 // GET /api/reviews/:productId - Get reviews for a product
 router.get('/:productId', optionalAuth, async (req, res) => {
@@ -29,7 +64,6 @@ router.get('/:productId', optionalAuth, async (req, res) => {
       isApproved: true,
     });
 
-    // Rating breakdown
     const breakdown = await Review.aggregate([
       { $match: { productId: require('mongoose').Types.ObjectId.createFromHexString(req.params.productId), isApproved: true } },
       { $group: { _id: '$rating', count: { $sum: 1 } } },
@@ -44,18 +78,26 @@ router.get('/:productId', optionalAuth, async (req, res) => {
 // POST /api/reviews - Submit a review (must be logged in)
 router.post('/', verifyToken, async (req, res) => {
   try {
-    const { productId, orderId, rating, title, review, images } = req.body;
+    const { productId, rating, title, review, images } = req.body;
+    let { orderId } = req.body;
 
-    // Check verified purchase if orderId given
+    // Verify delivered order
     let isVerifiedPurchase = false;
-    if (orderId) {
-      const order = await Order.findOne({
-        _id: orderId,
-        userId: req.userId,
-        status: 'Delivered',
-        'items.product': productId,
-      });
-      if (order) isVerifiedPurchase = true;
+    const deliveredOrders = await Order.find({
+      userId: req.userId,
+      status: { $regex: /^delivered$/i },
+      'items.product': productId,
+    });
+
+    if (deliveredOrders.length > 0) {
+      isVerifiedPurchase = true;
+      if (!orderId) {
+        // Pick an unreviewed orderId if available
+        const userReviews = await Review.find({ userId: req.userId, productId });
+        const reviewedOrderIds = userReviews.map(r => r.orderId?.toString()).filter(Boolean);
+        const unreviewed = deliveredOrders.find(o => !reviewedOrderIds.includes(o._id.toString()));
+        orderId = unreviewed ? unreviewed._id : deliveredOrders[0]._id;
+      }
     }
 
     const newReview = new Review({
@@ -70,11 +112,19 @@ router.post('/', verifyToken, async (req, res) => {
     });
 
     await newReview.save();
+
+    // Recalculate average rating for product
+    const allReviews = await Review.find({ productId, isApproved: true });
+    if (allReviews.length > 0) {
+      const avg = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+      await Product.findByIdAndUpdate(productId, { averageRating: avg, numReviews: allReviews.length });
+    }
+
     const populated = await newReview.populate('userId', 'name avatar');
     res.status(201).json(populated);
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(400).json({ message: 'You have already reviewed this product' });
+      return res.status(400).json({ message: 'You have already reviewed this purchase.' });
     }
     res.status(500).json({ message: err.message });
   }

@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/order_service.dart';
 import '../models/order_item.dart';
 import '../config/theme.dart';
+import '../widgets/glass_toast.dart';
 import '../bottom_navigation.dart';
 import 'order_tracking_screen.dart';
 import 'order_details_screen.dart';
@@ -21,13 +22,56 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   void initState() {
     super.initState();
-    if (OrderService.orders.isEmpty) _loadOrders();
+    _loadOrders();
   }
 
   Future<void> _loadOrders() async {
-    if (mounted && OrderService.orders.isEmpty) setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     await OrderService.fetchMyOrders();
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _handleDeleteOrder(String orderId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.deepCharcoal,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: const BorderSide(color: AppTheme.platinumBorder)),
+        title: const Text('REMOVE ORDER HISTORY?',
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1, color: Colors.white)),
+        content: const Text('Are you sure you want to remove this order from your history?',
+            style: TextStyle(color: AppTheme.coolGrey, fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('CANCEL', style: TextStyle(color: AppTheme.coolGrey, fontWeight: FontWeight.bold))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('REMOVE'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _isLoading = true);
+      try {
+        await OrderService.deleteOrder(orderId);
+        await _loadOrders();
+        if (mounted) {
+          showGlassToast(context, 'Order removed from history.', isError: false, title: 'ORDER REMOVED');
+        }
+      } catch (e) {
+        if (mounted) {
+          showGlassToast(context, 'Failed to remove order: $e', isError: true);
+        }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -85,6 +129,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   Widget _buildOrderCard(OrderItem order, int index, bool isNarrow) {
+    final bool canDelete = order.status == 'Delivered' || order.status == 'Cancelled';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       decoration: AppTheme.premiumCard(radius: 24),
@@ -105,7 +151,26 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     letterSpacing: 1,
                   ),
                 ),
-                _buildStatusBadge(order.status),
+                Row(
+                  children: [
+                    _buildStatusBadge(order.status),
+                    if (canDelete) ...[
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => _handleDeleteOrder(order.orderId),
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.error.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppTheme.error.withValues(alpha: 0.3), width: 0.5),
+                          ),
+                          child: const Icon(Icons.delete_outline_rounded, size: 14, color: AppTheme.error),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),

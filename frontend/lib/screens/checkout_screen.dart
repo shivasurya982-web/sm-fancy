@@ -10,6 +10,7 @@ import '../services/settings_service.dart';
 import '../services/payment_service.dart';
 import '../config/theme.dart';
 import '../widgets/gold_button.dart';
+import '../widgets/glass_toast.dart';
 import '../bottom_navigation.dart';
 import 'order_success_screen.dart';
 
@@ -84,7 +85,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _handlePlaceOrder() async {
     if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _streetController.text.isEmpty || _pinController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all details")));
+      showGlassToast(context, "Please fill all shipping details.", isError: true, title: 'CHECKOUT REQUIRED');
       return;
     }
     
@@ -117,7 +118,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'image': item.image,
       }).toList();
 
-      // 1. Create Order on Backend (Returns Dynamic UPI Intent Payload)
       final orderData = await PaymentService.initiateUPIDynamicQR(
           items: cartItemsMap, 
           address: shippingAddress,
@@ -128,13 +128,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final String orderId = orderData['fancyWorldOrderId'];
       final double amount = (orderData['amount'] as num).toDouble();
 
-      // 2. Show Dynamic QR Dialog
       if (mounted) {
         _showDynamicQRDialog(upiPayload, orderId, amount);
       }
 
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to initiate payment: $e"), backgroundColor: AppTheme.error));
+      if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('Error: ', '');
+        showGlassToast(context, "Failed to initiate payment: $msg", isError: true, title: 'PAYMENT ERROR');
+      }
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -195,7 +197,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           onPressed: isVerifying ? null : () async {
                               setDialogState(() => isVerifying = true);
                               
-                              // Polling mechanism to check real backend status
                               int attempts = 0;
                               statusTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
                                   attempts++;
@@ -205,11 +206,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                       if (ctx.mounted) Navigator.pop(ctx);
                                       _postOrderSuccess(orderId);
                                   }
-                                  if (attempts > 15) { // Timeout after 1 min
+                                  if (attempts > 15) {
                                       timer.cancel();
                                       setDialogState(() => isVerifying = false);
                                       if (ctx.mounted) {
-                                        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Auto-verification timed out. If you paid, our team will confirm manually.")));
+                                        showGlassToast(ctx, "Auto-verification timed out. Our team will confirm manually.", isError: true);
                                       }
                                   }
                               });
@@ -293,7 +294,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: order)));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Order Failed: $e"), backgroundColor: AppTheme.error));
+      if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('Error: ', '');
+        showGlassToast(context, "Order Failed: $msg", isError: true, title: 'ORDER FAILED');
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

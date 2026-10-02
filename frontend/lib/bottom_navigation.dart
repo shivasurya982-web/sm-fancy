@@ -159,6 +159,10 @@ class _BottomNavigationState extends State<BottomNavigation> {
                         separatorBuilder: (_, __) => const SizedBox(height: 16),
                         itemBuilder: (context, index) {
                           final n = notifications[index];
+                          final String title = n['title']?.toString() ?? '';
+                          final String body = n['body']?.toString() ?? '';
+                          final bool isDelivered = title.toLowerCase().contains('delivered') || body.toLowerCase().contains('delivered');
+
                           return Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10)),
@@ -174,13 +178,38 @@ class _BottomNavigationState extends State<BottomNavigation> {
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Expanded(child: Text(n['title']?.toString().toUpperCase() ?? 'ALERT', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.5))),
+                                          Expanded(child: Text(title.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.5))),
                                           const SizedBox(width: 8),
-                                          Text(n['createdAt'] != null ? DateFormat('dd/MM • HH:mm').format(DateTime.parse(n['createdAt']).toLocal()) : '', style: const TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.bold)),
+                                          Text(n['createdAt'] != null ? DateFormat('dd/MM • hh:mm a').format(DateTime.parse(n['createdAt']).toLocal()) : '', style: const TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.bold)),
                                         ],
                                       ),
                                       const SizedBox(height: 4),
-                                      Text(n['body'] ?? '', style: const TextStyle(color: AppTheme.coolGrey, fontSize: 12, height: 1.4, fontWeight: FontWeight.w500)),
+                                      Text(body, style: const TextStyle(color: AppTheme.coolGrey, fontSize: 12, height: 1.4, fontWeight: FontWeight.w500)),
+                                      if (isDelivered) ...[
+                                        const SizedBox(height: 12),
+                                        GestureDetector(
+                                          onTap: () {
+                                            Navigator.pop(ctx);
+                                            setState(() => currentIndex = 3); // Go to ORDERS tab
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.brushedPlatinum.withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(100),
+                                              border: Border.all(color: AppTheme.brushedPlatinum, width: 0.8),
+                                            ),
+                                            child: const Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                                                SizedBox(width: 6),
+                                                Text('RATE PRODUCT NOW', style: TextStyle(color: AppTheme.brushedPlatinum, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),

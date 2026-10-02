@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../services/notification_service.dart';
 import '../config/theme.dart';
 
@@ -137,7 +138,7 @@ class _NotificationsManagementScreenState extends State<NotificationsManagementS
                                 children: [
                                   Expanded(child: Text(n['title']?.toUpperCase() ?? 'NOTIFICATION', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5, color: AppTheme.polishedSilver))),
                                   const SizedBox(width: 8),
-                                  Text(n['createdAt']?.toString().substring(0, 10) ?? '', style: const TextStyle(color: AppTheme.coolGrey, fontSize: 9, fontWeight: FontWeight.w500)),
+                                  Text(n['createdAt'] != null ? DateFormat('dd MMM • hh:mm a').format(DateTime.parse(n['createdAt']).toLocal()) : '', style: const TextStyle(color: AppTheme.coolGrey, fontSize: 9, fontWeight: FontWeight.w500)),
                                 ],
                               ),
                               const SizedBox(height: 10),

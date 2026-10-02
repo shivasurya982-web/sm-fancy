@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 import '../services/chat_service.dart';
 import '../config/theme.dart';
 import 'chat_screen.dart';
@@ -94,7 +95,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             children: [
                               Expanded(child: Text(thread.customerName.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5, color: AppTheme.polishedSilver))),
                               const SizedBox(width: 8),
-                              Text("${thread.lastMessageTime.hour}:${thread.lastMessageTime.minute.toString().padLeft(2, '0')}", style: const TextStyle(color: Colors.white10, fontSize: 10, fontWeight: FontWeight.bold)),
+                              Text(DateFormat('hh:mm a').format(thread.lastMessageTime.toLocal()), style: const TextStyle(color: Colors.white10, fontSize: 10, fontWeight: FontWeight.bold)),
                             ],
                           ),
                           subtitle: Padding(

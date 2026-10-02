@@ -6,7 +6,7 @@ const orderItemSchema = new mongoose.Schema({
   image: { type: String },
   price: { type: Number, required: true },
   quantity: { type: Number, required: true, min: 1 },
-  variant: { type: String }, // e.g. "50ml"
+  variant: { type: String },
 });
 
 const trackingTimelineSchema = new mongoose.Schema({
@@ -43,10 +43,10 @@ const orderSchema = new mongoose.Schema(
       enum: ['Pending', 'Awaiting Verification', 'Paid', 'Failed', 'Refunded'],
       default: 'Pending',
     },
-    upiTransactionId: { type: String }, // User-provided UTR or Provider Txn ID
-    upiReferenceNo: { type: String }, // System-generated unique transaction ref
-    paymentVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Admin who verified if manual
-    paymentDetails: { type: Object }, // Store raw webhook/API data
+    upiTransactionId: { type: String },
+    upiReferenceNo: { type: String },
+    paymentVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    paymentDetails: { type: Object },
 
     // Delivery address snapshot
     address: {
@@ -91,13 +91,33 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-generate order number
+// Helper function for guaranteed unique order number
+async function generateUniqueOrderNumber() {
+  const now = new Date();
+  const dateStr = now.toISOString().slice(2, 10).replace(/-/g, '');
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const candidate = `FW${dateStr}${randomSuffix}`;
+    const exists = await mongoose.model('Order').exists({ orderNumber: candidate });
+    if (!exists) {
+      return candidate;
+    }
+  }
+  return `FW${Date.now()}`;
+}
+
+// Auto-generate order number reliably and uniquely before saving
 orderSchema.pre('save', async function (next) {
   if (!this.orderNumber) {
-    const count = await mongoose.model('Order').countDocuments();
-    this.orderNumber = `FW${String(count + 1).padStart(6, '0')}`;
+    try {
+      this.orderNumber = await generateUniqueOrderNumber();
+    } catch (e) {
+      this.orderNumber = `FW${Date.now()}`;
+    }
   }
   next();
 });
 
 module.exports = mongoose.model('Order', orderSchema);
+module.exports.generateUniqueOrderNumber = generateUniqueOrderNumber;

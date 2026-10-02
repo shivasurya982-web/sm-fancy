@@ -165,7 +165,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                               ),
                                             ),
                                             Text(
-                                              n['createdAt'] != null ? DateFormat('dd/MM • HH:mm').format(DateTime.parse(n['createdAt']).toLocal()) : '',
+                                              n['createdAt'] != null ? DateFormat('dd/MM • hh:mm a').format(DateTime.parse(n['createdAt']).toLocal()) : '',
                                               style: const TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.bold),
                                             ),
                                           ],

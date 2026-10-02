@@ -60,8 +60,12 @@ router.post('/', verifyToken, async (req, res) => {
     // 2. Calculate Final Total and Create Order
     const total = subtotal + shipping + tax - couponDiscount;
 
+    // Generate unique order number explicitly
+    const orderNumber = await Order.generateUniqueOrderNumber();
+
     const order = new Order({
       userId: req.userId,
+      orderNumber,
       items,
       address,
       paymentMethod,
@@ -73,7 +77,7 @@ router.post('/', verifyToken, async (req, res) => {
       total,
       customerLiveLocation,
       status: 'Placed',
-      paymentStatus: (paymentMethod === 'COD') ? 'Pending' : 'Pending', // COD is naturally pending, UPI is now handled by payments router
+      paymentStatus: (paymentMethod === 'COD') ? 'Pending' : 'Pending',
       timeline: [
         {
           status: 'Placed',
@@ -83,7 +87,16 @@ router.post('/', verifyToken, async (req, res) => {
       ],
     });
 
-    await order.save();
+    try {
+      await order.save();
+    } catch (saveErr) {
+      if (saveErr.code === 11000) {
+        order.orderNumber = `FW${Date.now()}`;
+        await order.save();
+      } else {
+        throw saveErr;
+      }
+    }
 
     // Record for persistent analytics (decoupled from order history)
     await recordOrderSale(order);
@@ -246,7 +259,6 @@ router.delete('/:id', verifyToken, async (req, res) => {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
-        // If user is admin, allow delete. If user, only if it's their order
         if (req.userRole !== 'admin' && order.userId.toString() !== req.userId) {
             return res.status(403).json({ message: 'Access denied' });
         }

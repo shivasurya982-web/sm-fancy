@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const variantSchema = new mongoose.Schema({
-  name: { type: String, required: true }, // e.g. "50ml", "Red", "XL"
+  name: { type: String, required: true },
   price: { type: Number },
   stock: { type: Number, default: 0 },
   sku: { type: String },
@@ -12,7 +12,7 @@ const productSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     description: { type: String, required: true },
     price: { type: Number, required: true },
-    discount: { type: Number, default: 0 }, // percentage
+    discount: { type: Number, default: 0 },
     discountedPrice: { type: Number },
 
     category: {
@@ -23,9 +23,9 @@ const productSchema = new mongoose.Schema(
     tags: [{ type: String }],
 
     // Images
-    imageUrl: { type: String, default: '' }, // primary image (backward compat)
-    images: [{ type: String }],              // all images
-    video: { type: String },                 // product video URL
+    imageUrl: { type: String, default: '' },
+    images: [{ type: String }],
+    video: { type: String },
 
     // Stock & Variants
     stock: { type: Number, default: 100 },
@@ -41,6 +41,10 @@ const productSchema = new mongoose.Schema(
     certification: { type: String },
     careInstructions: { type: String },
     authenticityInfo: { type: String },
+
+    // Ratings & Reviews
+    averageRating: { type: Number, default: 5.0 },
+    numReviews: { type: Number, default: 0 },
 
     // Flags
     isFeatured: { type: Boolean, default: false },

@@ -12,6 +12,7 @@ import '../services/socket_service.dart';
 import '../services/upload_service.dart';
 import '../config/theme.dart';
 import '../widgets/image_viewer.dart';
+import '../widgets/glass_toast.dart';
 
 class ChatScreen extends StatefulWidget {
   final String customerId;
@@ -172,6 +173,32 @@ class _ChatScreenState extends State<ChatScreen> {
     if (isLocating) return;
     setState(() => isLocating = true);
     try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) showGlassToast(context, 'Location services are disabled on your device.', isError: true);
+        setState(() => isLocating = false);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) showGlassToast(context, 'Location permission was denied.', isError: true);
+          setState(() => isLocating = false);
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          showGlassToast(context, 'Location permissions are permanently denied. Please enable in Settings.', isError: true);
+          await Geolocator.openAppSettings();
+        }
+        setState(() => isLocating = false);
+        return;
+      }
+
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -180,7 +207,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       await handleSendMessage(location: {'lat': position.latitude, 'lng': position.longitude});
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppTheme.error));
+      if (mounted) showGlassToast(context, e.toString(), isError: true);
     } finally {
       if (mounted) setState(() => isLocating = false);
     }

@@ -3,6 +3,7 @@ import '../services/auth_service.dart';
 import '../config/theme.dart';
 import '../widgets/gold_button.dart';
 import '../widgets/sparkle_background.dart';
+import '../widgets/glass_toast.dart';
 import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -34,9 +35,12 @@ class _SignupScreenState extends State<SignupScreen> {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
-    if (name.isEmpty || email.isEmpty || password.isEmpty) return;
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      showGlassToast(context, 'Please fill in all required fields.', isError: true, title: 'REGISTRATION REQUIRED');
+      return;
+    }
     if (password != _confirmController.text) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match')));
+        showGlassToast(context, 'Passwords do not match.', isError: true, title: 'PASSWORD MISMATCH');
         return;
     }
 
@@ -44,11 +48,12 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       await AuthService.register(name: name, email: email, password: password, recoveryHint: _hintController.text.trim());
       if (!mounted) return;
+      showGlassToast(context, 'Account created successfully! Please log in.', isError: false, title: 'ACCOUNT CREATED');
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     } catch (e) {
       if (mounted) {
         final msg = e.toString().replaceFirst('Exception: ', '').replaceFirst('Error: ', '');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.error));
+        showGlassToast(context, msg, isError: true, title: 'REGISTRATION FAILED');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

@@ -15,6 +15,10 @@ class ProductModel {
   final String brand;
   final int stock;
 
+  // Rating & Reviews
+  final double averageRating;
+  final int numReviews;
+
   // Jewelry Specific
   final String? metalType;
   final String? purity;
@@ -42,6 +46,8 @@ class ProductModel {
     this.discount = 0,
     this.brand = '',
     this.stock = 0,
+    this.averageRating = 5.0,
+    this.numReviews = 0,
     this.metalType,
     this.purity,
     this.weight,
@@ -74,6 +80,8 @@ class ProductModel {
       discount: (json['discount'] as num?)?.toDouble() ?? 0.0,
       brand: json['brand']?.toString() ?? '',
       stock: (json['stock'] as num?)?.toInt() ?? 0,
+      averageRating: (json['averageRating'] as num?)?.toDouble() ?? 5.0,
+      numReviews: (json['numReviews'] as num?)?.toInt() ?? 0,
       metalType: json['metalType'],
       purity: json['purity'],
       weight: json['weight'],
@@ -102,6 +110,8 @@ class ProductModel {
       'discount': discount,
       'brand': brand,
       'stock': stock,
+      'averageRating': averageRating,
+      'numReviews': numReviews,
       'metalType': metalType,
       'purity': purity,
       'weight': weight,

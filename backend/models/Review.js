@@ -4,7 +4,7 @@ const reviewSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
-    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' }, // verified purchase
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' }, // verified purchase order
     rating: { type: Number, required: true, min: 1, max: 5 },
     title: { type: String, trim: true },
     review: { type: String, trim: true },
@@ -16,8 +16,7 @@ const reviewSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// One review per user per product
-reviewSchema.index({ userId: 1, productId: 1 }, { unique: true });
+// One review per user per product per order (allows reviewing subsequent purchases)
+reviewSchema.index({ userId: 1, productId: 1, orderId: 1 }, { unique: true, sparse: true });
 
-// After save/delete: update product rating aggregate removed
 module.exports = mongoose.model('Review', reviewSchema);
