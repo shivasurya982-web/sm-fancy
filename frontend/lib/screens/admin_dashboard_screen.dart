@@ -164,6 +164,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
+                                            const SizedBox(width: 8),
                                             Text(
                                               n['createdAt'] != null ? DateFormat('dd/MM • hh:mm a').format(DateTime.parse(n['createdAt']).toLocal()) : '',
                                               style: const TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.bold),
@@ -174,6 +175,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                         Text(n['body'] ?? '', style: const TextStyle(color: AppTheme.polishedSilver, fontSize: 11, height: 1.4, fontWeight: FontWeight.w500)),
                                       ],
                                     ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppTheme.error),
+                                    onPressed: () {
+                                      if (n['_id'] != null) {
+                                        NotificationService.deleteNotification(n['_id']);
+                                      }
+                                    },
                                   ),
                                 ],
                               ),
@@ -220,7 +232,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           children: _pages,
                         ),
                       ),
-                      const SizedBox(height: 90), // Space for floating bar
+                      const SizedBox(height: 90),
                     ],
                   ),
                 ),

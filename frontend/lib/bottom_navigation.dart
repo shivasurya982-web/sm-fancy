@@ -190,7 +190,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
                                         GestureDetector(
                                           onTap: () {
                                             Navigator.pop(ctx);
-                                            setState(() => currentIndex = 3); // Go to ORDERS tab
+                                            setState(() => currentIndex = 3);
                                           },
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -212,6 +212,17 @@ class _BottomNavigationState extends State<BottomNavigation> {
                                       ],
                                     ],
                                   ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                  icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppTheme.error),
+                                  onPressed: () {
+                                    if (n['_id'] != null) {
+                                      NotificationService.deleteNotification(n['_id']);
+                                    }
+                                  },
                                 ),
                               ],
                             ),

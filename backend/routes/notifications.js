@@ -81,6 +81,7 @@ const createNotification = async (app, data) => {
                 io.emit('new_notification', notification);
             } else if (data.userId) {
                 io.to(data.userId.toString()).emit('new_notification', notification);
+                io.emit('new_notification', notification);
             } else {
                 io.emit('new_notification', notification);
             }
