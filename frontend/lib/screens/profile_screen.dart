@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
@@ -32,8 +31,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = false;
   final ImagePicker _picker = ImagePicker();
 
-  bool _notificationEnabled = true;
-
   @override
   void initState() {
     super.initState();
@@ -53,18 +50,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) setState(() => _isLoading = true);
     try {
       final user = await ApiService.get('/auth/me');
-      final prefs = await SharedPreferences.getInstance();
       if (user != null) {
         _nameController.text = user['name'] ?? '';
         _emailController.text = user['email'] ?? '';
         _phoneController.text = user['phone'] ?? '';
         _hintController.text = user['recoveryHint'] ?? '';
         _profileImagePath = user['avatar'] ?? '';
-        
-        final bool serverPref = user['notificationEnabled'] ?? true;
-        final bool localPref = prefs.getBool('notificationEnabled') ?? true;
-        _notificationEnabled = serverPref && localPref;
-        await prefs.setBool('notificationEnabled', _notificationEnabled);
 
         await UserService.saveUser(
           name: _nameController.text,
@@ -348,43 +339,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildSectionTitle('PREFERENCES'),
                     const SizedBox(height: 12),
                     _buildMenuCard([
-                      _buildToggleTile('Notifications', _notificationEnabled, (v) async {
-                        final prefs = await SharedPreferences.getInstance();
-                        if (v) {
-                          var status = await Permission.notification.status;
-                          if (status.isDenied) {
-                            status = await Permission.notification.request();
-                          }
-                          if (status.isPermanentlyDenied) {
-                            if (mounted) {
-                              showGlassToast(context, 'Notification permissions are disabled in system settings.', isError: true, title: 'PERMISSIONS REQUIRED');
-                              await openAppSettings();
-                            }
-                            return;
-                          }
-                          if (status.isGranted) {
-                            await prefs.setBool('notificationEnabled', true);
-                            setState(() => _notificationEnabled = true);
-                            await ApiService.put('/auth/preferences', {'notificationEnabled': true});
-                            if (mounted) {
-                              showGlassToast(context, 'Notifications enabled in app.', isError: false, title: 'NOTIFICATIONS ON');
-                            }
-                          } else {
-                            if (mounted) {
-                              showGlassToast(context, 'Notification permission was not granted.', isError: true);
-                            }
-                          }
-                        } else {
-                          await prefs.setBool('notificationEnabled', false);
-                          setState(() => _notificationEnabled = false);
-                          await ApiService.put('/auth/preferences', {'notificationEnabled': false});
-                          if (mounted) {
-                            showGlassToast(context, 'Notifications disabled in app.', isError: false, title: 'NOTIFICATIONS OFF');
-                          }
-                        }
-                      }),
-                      const Divider(color: AppTheme.glassBorder, height: 1, indent: 20, endIndent: 20),
-                      _buildMenuTile(Icons.settings_suggest_outlined, 'System App Permissions', () async {
+                      _buildMenuTile(Icons.notifications_active_outlined, 'App Notifications & Permissions', () async {
                         await openAppSettings();
                       }),
                     ]),
@@ -525,25 +480,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: AppTheme.polishedSilver)),
         trailing: const Icon(Icons.chevron_right_rounded,
             size: 16, color: Colors.white10),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      ),
-    );
-  }
-
-  Widget _buildToggleTile(String title, bool val, ValueChanged<bool> onChanged) {
-    return Material(
-      color: Colors.transparent,
-      child: SwitchListTile(
-        value: val,
-        onChanged: onChanged,
-        title: Text(title,
-            style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.polishedSilver)),
-        activeThumbColor: AppTheme.brushedPlatinum,
-        activeTrackColor: AppTheme.brushedPlatinum.withValues(alpha: 0.2),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
