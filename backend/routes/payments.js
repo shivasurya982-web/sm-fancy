@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Coupon = require('../models/Coupon');
@@ -10,66 +11,203 @@ const { verifyToken } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
 const { recordOrderSale } = require('../services/analyticsService');
 
-// POST /api/payments/create-order - Prepare order for Dynamic UPI QR
-router.post('/create-order', verifyToken, async (req, res) => {
-  try {
-    const {
-        items,
-        address,
-        couponCode,
-        shipping = 0,
-        tax = 0
-    } = req.body;
+/**
+ * Helper to verify HMAC-SHA256 signature from Payment Server
+ */
+function verifyHMACSignature(req) {
+  const signature = req.headers['x-signature'] || req.headers['x-provider-signature'];
+  if (!signature) return false;
 
-    if (!items || items.length === 0) {
-        return res.status(400).json({ message: 'No items in cart' });
+  const appKey = process.env.APP_KEY;
+  if (!appKey) return false;
+
+  let rawData;
+  if (req.rawBody && Buffer.isBuffer(req.rawBody)) {
+    rawData = req.rawBody;
+  } else if (typeof req.body === 'string') {
+    rawData = Buffer.from(req.body);
+  } else if (Buffer.isBuffer(req.body)) {
+    rawData = req.body;
+  } else {
+    rawData = Buffer.from(JSON.stringify(req.body || {}));
+  }
+
+  try {
+    const hmac = crypto.createHmac('sha256', appKey);
+    hmac.update(rawData);
+    const expectedHex = hmac.digest('hex');
+
+    const sigBuf = Buffer.from(String(signature).trim().toLowerCase(), 'hex');
+    const expBuf = Buffer.from(expectedHex.toLowerCase(), 'hex');
+
+    if (sigBuf.length !== expBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch (err) {
+    console.error('[HMAC Verification Error]', err);
+    return false;
+  }
+}
+
+/**
+ * Idempotent Order Payment Status Updater
+ */
+async function processPaymentUpdate(order, payload, app = null) {
+  // If order is already processed out of Pending, maintain idempotency
+  if (order.paymentStatus !== 'Pending') {
+    return {
+      success: true,
+      message: 'Already processed',
+      paymentStatus: order.paymentStatus,
+      orderStatus: order.status,
+    };
+  }
+
+  const { status, amount, paid, utr, orderId } = payload;
+  const expectedAmount = order.amountToPay ?? order.total;
+
+  if (status === 'SUCCESS') {
+    const numAmount = parseFloat(amount);
+    const numPaid = parseFloat(paid);
+    const numExpected = parseFloat(expectedAmount);
+
+    // Verify exact amount match and paid equality
+    if (!isNaN(numAmount) && !isNaN(numPaid) && numAmount === numExpected && numPaid === numAmount) {
+      order.paymentStatus = 'Paid';
+      order.status = 'Confirmed';
+      if (utr || orderId) order.upiTransactionId = utr || orderId;
+      order.paymentDetails = payload;
+      order.timeline.push({
+        status: 'Confirmed',
+        message: 'Payment verified successfully via payment server',
+        isCompleted: true,
+      });
+
+      await order.save();
+      await handlePostPayment(app, order);
+
+      return { success: true, paymentStatus: 'Paid', orderStatus: 'Confirmed' };
+    } else {
+      // Amount mismatch or WRONG payment amount
+      order.paymentStatus = 'WRONG';
+      order.notes = (order.notes ? order.notes + '\n' : '') +
+        `[PAYMENT WRONG] Expected: ₹${numExpected}, Server Amount: ₹${numAmount}, Paid: ₹${numPaid}`;
+      order.paymentDetails = payload;
+      await order.save();
+
+      return { success: false, paymentStatus: 'WRONG', orderStatus: order.status, message: 'Amount mismatch' };
+    }
+  } else if (status === 'WRONG') {
+    order.paymentStatus = 'WRONG';
+    order.notes = (order.notes ? order.notes + '\n' : '') + '[PAYMENT WRONG] Reported WRONG by payment server';
+    order.paymentDetails = payload;
+    await order.save();
+
+    return { success: false, paymentStatus: 'WRONG', orderStatus: order.status };
+  } else if (status === 'CANCELLED') {
+    order.paymentStatus = 'Cancelled';
+    order.status = 'Cancelled';
+    order.paymentDetails = payload;
+    await order.save();
+
+    return { success: false, paymentStatus: 'Cancelled', orderStatus: 'Cancelled' };
+  }
+
+  return { success: false, paymentStatus: order.paymentStatus, orderStatus: order.status };
+}
+
+/**
+ * Post payment fulfillment (Stock deduction, Analytics, Loyalty Points, Notification)
+ */
+async function handlePostPayment(app, order) {
+  try {
+    for (const item of order.items) {
+      if (item.product) {
+        await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } });
+      }
     }
 
-    // 1. Calculate and Validate Amount on Backend
+    await recordOrderSale(order);
+
+    const points = Math.floor(order.total / 100);
+    if (order.userId) {
+      await User.findByIdAndUpdate(order.userId, { $inc: { loyaltyPoints: points } });
+    }
+
+    if (app) {
+      const productNames = order.items.map(i => i.name).join(', ');
+      await createNotification(app, {
+        userId: order.userId,
+        title: 'Payment Confirmed!',
+        body: `Your payment for ${productNames} has been verified and your order is confirmed.`,
+        type: 'order',
+        data: { orderId: order._id },
+      });
+    }
+  } catch (err) {
+    console.error('[POST PAYMENT ERROR]', err);
+  }
+}
+
+// ─── ENDPOINTS ───────────────────────────────────────────────────────────────
+
+/**
+ * Create Order & Initiate Payment Server Call
+ * POST /api/payments/create-order or /api/payments/create
+ */
+const createPaymentHandler = async (req, res) => {
+  try {
+    const { items, address, couponCode, shipping = 0, tax = 0, returnUrl: clientReturnUrl } = req.body;
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ message: 'No items in cart' });
+    }
+
+    // 1. Calculate & validate subtotal
     let calculatedSubtotal = 0;
     for (const item of items) {
-        const product = await Product.findById(item.product);
-        if (!product) return res.status(404).json({ message: `Product ${item.name} not found` });
-        if (product.stock < item.quantity) return res.status(400).json({ message: `Insufficient stock for ${product.name}` });
-        calculatedSubtotal += product.price * item.quantity;
+      const product = await Product.findById(item.product);
+      if (!product) return res.status(404).json({ message: `Product ${item.name} not found` });
+      if (product.stock < item.quantity) return res.status(400).json({ message: `Insufficient stock for ${product.name}` });
+      calculatedSubtotal += product.price * item.quantity;
     }
 
     let couponDiscount = 0;
     if (couponCode) {
-        const coupon = await Coupon.findOne({ code: couponCode.toUpperCase(), isActive: true });
-        if (coupon) {
-            couponDiscount = (coupon.discountType === 'percentage')
-                ? Math.min(Math.round((calculatedSubtotal * coupon.discountValue) / 100), coupon.maxDiscountAmount || calculatedSubtotal)
-                : coupon.discountValue;
-        }
+      const coupon = await Coupon.findOne({ code: couponCode.toUpperCase(), isActive: true });
+      if (coupon) {
+        couponDiscount = (coupon.discountType === 'percentage')
+          ? Math.min(Math.round((calculatedSubtotal * coupon.discountValue) / 100), coupon.maxDiscountAmount || calculatedSubtotal)
+          : coupon.discountValue;
+      }
     }
 
-    const totalAmount = calculatedSubtotal + shipping + tax - couponDiscount;
-    if (totalAmount <= 0) return res.status(400).json({ message: 'Invalid total amount' });
+    const initialTotal = calculatedSubtotal + shipping + tax - couponDiscount;
+    if (initialTotal <= 0) return res.status(400).json({ message: 'Invalid total amount' });
 
-    // 2. Create Order in DB with status PAYMENT_PENDING
+    // 2. Create Order in DB
     const upiRef = `FW${Date.now()}${Math.floor(Math.random() * 1000)}`;
     const orderNumber = await Order.generateUniqueOrderNumber();
 
     const order = new Order({
-        userId: req.userId,
-        orderNumber,
-        items,
-        address,
-        paymentMethod: 'UPI',
-        paymentStatus: 'Pending',
-        subtotal: calculatedSubtotal,
-        shipping,
-        tax,
-        couponCode,
-        couponDiscount,
-        total: totalAmount,
-        status: 'Placed',
-        upiReferenceNo: upiRef,
-        timeline: [
-            { status: 'Placed', message: 'Order initiated via Dynamic UPI QR', isCompleted: true },
-            { status: 'Pending Verification', message: 'Waiting for banking confirmation...', isCompleted: false }
-        ],
+      userId: req.userId || req.body.userId,
+      orderNumber,
+      items,
+      address,
+      paymentMethod: 'UPI',
+      paymentStatus: 'Pending',
+      subtotal: calculatedSubtotal,
+      shipping,
+      tax,
+      couponCode,
+      couponDiscount,
+      total: initialTotal,
+      amountToPay: initialTotal,
+      status: 'Placed',
+      upiReferenceNo: upiRef,
+      timeline: [
+        { status: 'Placed', message: 'Order initiated via UPI Payment Server', isCompleted: true },
+        { status: 'Pending Verification', message: 'Waiting for payment confirmation...', isCompleted: false },
+      ],
     });
 
     try {
@@ -83,101 +221,234 @@ router.post('/create-order', verifyToken, async (req, res) => {
       }
     }
 
-    // 3. Fetch Merchant VPA from Settings
-    const settings = await AppSettings.findOne();
-    const vpa = settings?.upiId || 'shivasurya982-1@oksbi';
+    // 3. Determine Return Link & Payment Server URL
+    const paymentServerUrl = process.env.PAYMENT_SERVER_URL;
+    const appKey = process.env.APP_KEY;
+    const returnUrl = clientReturnUrl || process.env.RETURN_URL_APP || 'fancyworld://payment-done';
 
-    // 4. Construct Dynamic UPI Intent URL
-    const upiPayload = `upi://pay?pa=${vpa}&pn=${encodeURIComponent('FANCY WORLD')}&tr=${upiRef}&am=${totalAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Order ' + order.orderNumber)}`;
+    let payUrl = null;
+    let finalAmount = initialTotal;
+    let paymentServerOrderId = null;
 
-    res.json({
-        success: true,
-        fancyWorldOrderId: order._id,
-        orderNumber: order.orderNumber,
-        amount: totalAmount,
-        upiPayload: upiPayload,
-        upiReferenceNo: upiRef
+    if (paymentServerUrl && appKey && !paymentServerUrl.includes('REPLACE-WITH')) {
+      try {
+        const createRes = await fetch(`${paymentServerUrl}/api/create`, {
+          method: 'POST',
+          headers: {
+            'x-api-key': appKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            amount: initialTotal,
+            ref: order._id.toString(),
+            returnUrl,
+          }),
+        });
+
+        if (createRes.ok) {
+          const createData = await createRes.json();
+          paymentServerOrderId = createData.id;
+          finalAmount = parseFloat(createData.amount) || initialTotal;
+          payUrl = createData.payUrl;
+
+          order.paymentServerOrderId = paymentServerOrderId;
+          order.amountToPay = finalAmount;
+          order.total = finalAmount;
+          await order.save();
+        } else {
+          console.error('[Payment Server Create Error]', await createRes.text());
+        }
+      } catch (err) {
+        console.error('[Payment Server Call Failed]', err.message);
+      }
+    }
+
+    // Fallback URL if payment server URL not reachable/configured yet in dev
+    if (!payUrl) {
+      const settings = await AppSettings.findOne();
+      const vpa = settings?.upiId || 'shivasurya982-1@oksbi';
+      payUrl = `upi://pay?pa=${vpa}&pn=${encodeURIComponent('FANCY WORLD')}&tr=${upiRef}&am=${finalAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Order ' + order.orderNumber)}`;
+    }
+
+    return res.json({
+      success: true,
+      orderId: order._id.toString(),
+      fancyWorldOrderId: order._id.toString(),
+      orderNumber: order.orderNumber,
+      amount: finalAmount,
+      payUrl: payUrl,
+      upiPayload: payUrl,
+      paymentServerOrderId,
+      upiReferenceNo: upiRef,
     });
-
   } catch (err) {
-    console.error('[PAYMENT ERROR]', err);
+    console.error('[CREATE PAYMENT ERROR]', err);
     res.status(500).json({ message: 'Failed to initiate payment', error: err.message });
   }
-});
+};
 
-// POST /api/payments/webhook
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+router.post('/create-order', verifyToken, createPaymentHandler);
+router.post('/create', verifyToken, createPaymentHandler);
+
+/**
+ * Payment Server Callback Endpoint
+ * POST /api/payments/callback or /payment-callback or /webhook
+ */
+const callbackHandler = async (req, res) => {
   try {
-    const signature = req.headers['x-provider-signature'];
-    if (!signature) return res.status(401).send('Missing signature');
-
-    const payload = JSON.parse(req.body.toString());
-    const { transactionId, merchantReference, amount, status, utr } = payload;
-
-    const order = await Order.findOne({ upiReferenceNo: merchantReference });
-    if (!order) return res.status(404).send('Order not found');
-
-    if (order.paymentStatus === 'Paid') return res.json({ success: true, message: 'Already processed' });
-
-    if (status === 'SUCCESS' && parseFloat(amount) === order.total) {
-        order.paymentStatus = 'Paid';
-        order.upiTransactionId = utr || transactionId;
-        order.status = 'Confirmed';
-        order.paymentDetails = payload;
-        order.timeline.push({ status: 'Confirmed', message: 'Payment verified via automated gateway', isCompleted: true });
-
-        await order.save();
-        await handlePostPayment(req.app, order);
-
-        return res.json({ success: true });
-    } else {
-        order.paymentStatus = 'Failed';
-        order.paymentDetails = payload;
-        await order.save();
-        return res.status(400).send('Payment failed or amount mismatch');
+    if (!verifyHMACSignature(req)) {
+      console.warn('[CALLBACK REJECTED] Invalid signature');
+      return res.status(400).json({ message: 'Invalid signature' });
     }
 
+    const payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const { ref, orderId, status, amount, paid } = payload;
+
+    if (!ref && !orderId) {
+      return res.status(400).json({ message: 'Missing order ref or orderId' });
+    }
+
+    const query = [];
+    if (ref) {
+      if (mongoose.Types.ObjectId.isValid(ref)) query.push({ _id: ref });
+      query.push({ orderNumber: ref });
+      query.push({ upiReferenceNo: ref });
+    }
+    if (orderId) {
+      query.push({ paymentServerOrderId: orderId });
+    }
+
+    const order = await Order.findOne({ $or: query });
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    const result = await processPaymentUpdate(order, payload, req.app);
+    return res.status(200).json(result);
   } catch (err) {
-    console.error('[WEBHOOK ERROR]', err);
-    res.status(500).send('Internal Server Error');
+    console.error('[CALLBACK ERROR]', err);
+    return res.status(500).json({ message: 'Internal Server Error' });
   }
-});
+};
 
-// GET /api/payments/status/:orderId
-router.get('/status/:orderId', verifyToken, async (req, res) => {
-    try {
-        const order = await Order.findById(req.params.orderId);
-        if (!order) return res.status(404).json({ message: 'Order not found' });
+router.post('/callback', callbackHandler);
+router.post('/payment-callback', callbackHandler);
+router.post('/webhook', callbackHandler);
 
-        res.json({
-            paymentStatus: order.paymentStatus,
-            orderStatus: order.status
-        });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
+/**
+ * Server-to-Server Status Check (Safety Net)
+ * GET /api/payments/orders/:id/payment-status or /status/:orderId
+ */
+const statusCheckHandler = async (req, res) => {
+  try {
+    const orderIdParam = req.params.id || req.params.orderId;
+    const query = [];
+    if (mongoose.Types.ObjectId.isValid(orderIdParam)) query.push({ _id: orderIdParam });
+    query.push({ orderNumber: orderIdParam });
+    query.push({ upiReferenceNo: orderIdParam });
+
+    const order = await Order.findOne({ $or: query });
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
     }
-});
 
-async function handlePostPayment(app, order) {
-    for (const item of order.items) {
-        if (item.product) {
-            await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } });
+    // Safety net: If order is still Pending, check server-to-server with Payment Server
+    if (order.paymentStatus === 'Pending' && order.paymentServerOrderId) {
+      const paymentServerUrl = process.env.PAYMENT_SERVER_URL;
+      const appKey = process.env.APP_KEY;
+
+      if (paymentServerUrl && appKey && !paymentServerUrl.includes('REPLACE-WITH')) {
+        try {
+          const statusRes = await fetch(`${paymentServerUrl}/api/status?id=${order.paymentServerOrderId}`, {
+            headers: { 'x-api-key': appKey },
+          });
+
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            // Expected statusData: { status: 'PENDING'|'SUCCESS'|'WRONG'|'CANCELLED', ref, amount, paid }
+            if (statusData && statusData.status && statusData.status !== 'PENDING') {
+              await processPaymentUpdate(order, statusData, req.app);
+            }
+          }
+        } catch (err) {
+          console.error('[STATUS CHECK S2S ERROR]', err.message);
         }
+      }
     }
 
-    await recordOrderSale(order);
-
-    const points = Math.floor(order.total / 100);
-    await User.findByIdAndUpdate(order.userId, { $inc: { loyaltyPoints: points } });
-
-    const productNames = order.items.map(i => i.name).join(', ');
-    await createNotification(app, {
-        userId: order.userId,
-        title: 'Payment Confirmed!',
-        body: `Your payment for ${productNames} has been verified and your order is confirmed.`,
-        type: 'order',
-        data: { orderId: order._id }
+    return res.json({
+      success: true,
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      paymentStatus: order.paymentStatus,
+      orderStatus: order.status,
+      amountToPay: order.amountToPay || order.total,
+      notes: order.notes,
     });
+  } catch (err) {
+    console.error('[STATUS CHECK ERROR]', err);
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+router.get('/orders/:id/payment-status', verifyToken, statusCheckHandler);
+router.get('/status/:orderId', verifyToken, statusCheckHandler);
+
+/**
+ * Background Retry Job for Orders remaining PENDING > 6 Minutes
+ */
+async function runPendingOrderRetryJob(app = null) {
+  try {
+    const sixMinutesAgo = new Date(Date.now() - 6 * 60 * 1000);
+    const pendingOrders = await Order.find({
+      paymentStatus: 'Pending',
+      createdAt: { $lte: sixMinutesAgo },
+      paymentServerOrderId: { $exists: true, $ne: null },
+    });
+
+    const paymentServerUrl = process.env.PAYMENT_SERVER_URL;
+    const appKey = process.env.APP_KEY;
+
+    if (!paymentServerUrl || !appKey || paymentServerUrl.includes('REPLACE-WITH')) {
+      return;
+    }
+
+    for (const order of pendingOrders) {
+      try {
+        const res = await fetch(`${paymentServerUrl}/api/status?id=${order.paymentServerOrderId}`, {
+          headers: { 'x-api-key': appKey },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.status) {
+            if (data.status === 'CANCELLED') {
+              order.paymentStatus = 'Cancelled';
+              order.status = 'Cancelled';
+              await order.save();
+            } else if (data.status === 'SUCCESS' || data.status === 'WRONG') {
+              await processPaymentUpdate(order, data, app);
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[RETRY JOB ERROR] Order ${order._id}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[RETRY JOB FAILED]', err.message);
+  }
+}
+
+function startPendingPaymentRetryJob(app = null) {
+  // Run every 2 minutes
+  setInterval(() => {
+    runPendingOrderRetryJob(app);
+  }, 2 * 60 * 1000);
 }
 
 module.exports = router;
+module.exports.verifyHMACSignature = verifyHMACSignature;
+module.exports.processPaymentUpdate = processPaymentUpdate;
+module.exports.runPendingOrderRetryJob = runPendingOrderRetryJob;
+module.exports.startPendingPaymentRetryJob = startPendingPaymentRetryJob;

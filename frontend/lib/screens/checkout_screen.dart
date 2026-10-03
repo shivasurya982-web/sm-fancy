@@ -13,6 +13,8 @@ import '../widgets/gold_button.dart';
 import '../widgets/glass_toast.dart';
 import '../bottom_navigation.dart';
 import 'order_success_screen.dart';
+import 'payment_result_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -96,7 +98,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  // --- Dynamic UPI QR Flow ---
+  // --- UPI Payment Server Flow ---
 
   Future<void> _startDynamicUPIPayment() async {
     setState(() => _isLoading = true);
@@ -119,17 +121,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }).toList();
 
       final orderData = await PaymentService.initiateUPIDynamicQR(
-          items: cartItemsMap, 
-          address: shippingAddress,
-          shipping: _currentShippingFee,
+        items: cartItemsMap, 
+        address: shippingAddress,
+        shipping: _currentShippingFee,
+        returnUrl: 'fancyworld://payment-done',
       );
 
-      final String upiPayload = orderData['upiPayload'];
-      final String orderId = orderData['fancyWorldOrderId'];
+      final String payUrl = orderData['payUrl'] ?? orderData['upiPayload'];
+      final String orderId = orderData['orderId'] ?? orderData['fancyWorldOrderId'];
+      final String? orderNumber = orderData['orderNumber'];
       final double amount = (orderData['amount'] as num).toDouble();
 
+      // Persist pending order ID for app reload / deep link recovery
+      await PaymentService.savePendingOrderId(orderId);
+
+      // Launch payment URL in external browser / app
+      final uri = Uri.parse(payUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+
       if (mounted) {
-        _showDynamicQRDialog(upiPayload, orderId, amount);
+        _showPaymentVerificationDialog(payUrl, orderId, orderNumber, amount);
       }
 
     } catch (e) {
@@ -141,113 +154,140 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  void _showDynamicQRDialog(String payload, String orderId, double amount) {
-      Timer? statusTimer;
-      bool isVerifying = false;
+  void _showPaymentVerificationDialog(String payUrl, String orderId, String? orderNumber, double amount) {
+    Timer? statusTimer;
 
-      showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => StatefulBuilder(
-              builder: (context, setDialogState) => AlertDialog(
-                  backgroundColor: AppTheme.deepCharcoal,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32), side: const BorderSide(color: AppTheme.glassBorder)),
-                  title: const Center(child: Text('SCAN TO PAY', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver, letterSpacing: 2))),
-                  content: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                          Text('₹${amount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
-                          const SizedBox(height: 20),
-                          Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                              child: QrImageView(
-                                  data: payload,
-                                  version: QrVersions.auto,
-                                  size: 160,
-                                  eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
-                                  dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Colors.black),
-                              ),
-                          ),
-                          const SizedBox(height: 16),
-                          const Text('Scan using Google Pay, PhonePe, or Paytm', textAlign: TextAlign.center, style: TextStyle(color: AppTheme.coolGrey, fontSize: 11)),
-                          const SizedBox(height: 12),
-                          if (isVerifying) 
-                              const Column(
-                                  children: [
-                                      SizedBox(height: 8, width: 8, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brushedPlatinum)),
-                                      SizedBox(height: 12),
-                                      Text('WAITING FOR BANK CONFIRMATION...', style: TextStyle(color: AppTheme.brushedPlatinum, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                                  ],
-                              ),
-                      ],
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          statusTimer ??= Timer.periodic(const Duration(seconds: 4), (timer) async {
+            final res = await PaymentService.checkPaymentStatus(orderId);
+            final String paymentStatus = (res['paymentStatus'] ?? 'Pending').toString();
+
+            if (paymentStatus != 'Pending') {
+              timer.cancel();
+              await PaymentService.clearPendingOrderId();
+              if (paymentStatus == 'Paid') {
+                await CartService.clearCart();
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                setState(() => _isLoading = false);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => PaymentResultScreen(
+                      status: paymentStatus,
+                      orderId: orderId,
+                      orderNumber: orderNumber ?? res['orderNumber'],
+                      amount: amount,
                     ),
                   ),
-                  actions: [
-                      TextButton(
-                          onPressed: () { 
-                              statusTimer?.cancel();
-                              Navigator.pop(ctx); 
-                              if (mounted) setState(() => _isLoading = false); 
-                          },
-                          child: const Text('CANCEL', style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold))
-                      ),
-                      ElevatedButton(
-                          onPressed: isVerifying ? null : () async {
-                              setDialogState(() => isVerifying = true);
-                              
-                              int attempts = 0;
-                              statusTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
-                                  attempts++;
-                                  final res = await PaymentService.checkPaymentStatus(orderId);
-                                  if (res['paymentStatus'] == 'Paid') {
-                                      timer.cancel();
-                                      if (ctx.mounted) Navigator.pop(ctx);
-                                      _postOrderSuccess(orderId);
-                                  }
-                                  if (attempts > 15) {
-                                      timer.cancel();
-                                      setDialogState(() => isVerifying = false);
-                                      if (ctx.mounted) {
-                                        showGlassToast(ctx, "Auto-verification timed out. Our team will confirm manually.", isError: true);
-                                      }
-                                  }
-                              });
-                          },
-                          child: const Text('I HAVE PAID')
-                      ),
-                  ],
+                );
+              }
+            }
+          });
+
+          return AlertDialog(
+            backgroundColor: AppTheme.deepCharcoal,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32), side: const BorderSide(color: AppTheme.glassBorder)),
+            title: const Center(
+              child: Text(
+                'CHECKING PAYMENT...',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver, letterSpacing: 2),
               ),
-          )
-      );
-  }
-
-  Future<void> _postOrderSuccess(String orderId) async {
-      await CartService.clearCart();
-      try {
-          final addr = AddressModel(
-              name: _nameController.text.trim(),
-              phone: _phoneController.text.trim(),
-              address: _streetController.text.trim(),
-              city: _cityController.text.trim(),
-              pincode: _pinController.text.trim(),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('₹${amount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                    child: QrImageView(
+                      data: payUrl,
+                      version: QrVersions.auto,
+                      size: 150,
+                      eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
+                      dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Colors.black),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brushedPlatinum),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Complete payment in your browser or UPI app.\nWaiting for server confirmation...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppTheme.coolGrey, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  statusTimer?.cancel();
+                  await PaymentService.clearPendingOrderId();
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (mounted) {
+                    setState(() => _isLoading = false);
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PaymentResultScreen(
+                          status: 'Cancelled',
+                          orderId: orderId,
+                          orderNumber: orderNumber,
+                          amount: amount,
+                        ),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('CANCEL PAYMENT', style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold)),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final res = await PaymentService.checkPaymentStatus(orderId);
+                  final String paymentStatus = (res['paymentStatus'] ?? 'Pending').toString();
+                  if (paymentStatus != 'Pending') {
+                    statusTimer?.cancel();
+                    await PaymentService.clearPendingOrderId();
+                    if (paymentStatus == 'Paid') {
+                      await CartService.clearCart();
+                    }
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (mounted) {
+                      setState(() => _isLoading = false);
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PaymentResultScreen(
+                            status: paymentStatus,
+                            orderId: orderId,
+                            orderNumber: orderNumber ?? res['orderNumber'],
+                            amount: amount,
+                          ),
+                        ),
+                      );
+                    }
+                  } else {
+                    if (ctx.mounted) {
+                      showGlassToast(ctx, "Payment is still pending verification...", title: 'CHECKING STATUS');
+                    }
+                  }
+                },
+                child: const Text('CHECK AGAIN'),
+              ),
+            ],
           );
-          await AddressService.saveAddress(addr);
-      } catch (_) {}
-
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      try {
-          final fullOrder = await OrderService.getOrderById(orderId);
-          if (mounted) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => OrderSuccessScreen(order: fullOrder)));
-          }
-      } catch (e) {
-          if (mounted) {
-            Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const BottomNavigation()), (_) => false);
-          }
-      }
+        },
+      ),
+    );
   }
 
   // --- COD Logic ---

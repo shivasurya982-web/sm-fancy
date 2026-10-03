@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
+import 'package:app_links/app_links.dart';
 
 import 'screens/home_screen.dart';
 import 'screens/wishlist_screen.dart';
@@ -10,10 +12,12 @@ import 'screens/orders_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/user_chat_redirect.dart';
+import 'screens/payment_result_screen.dart';
 import 'services/notification_service.dart';
 import 'services/cart_service.dart';
 import 'services/api_service.dart';
 import 'services/settings_service.dart';
+import 'services/payment_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config/theme.dart';
 import 'widgets/sparkle_background.dart';
@@ -27,12 +31,97 @@ class BottomNavigation extends StatefulWidget {
 
 class _BottomNavigationState extends State<BottomNavigation> {
   int currentIndex = 0;
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _appLinksSub;
 
   @override
   void initState() {
     super.initState();
     if (ApiService.isLoggedIn) {
       NotificationService.fetchMyNotifications();
+    }
+    _initAppLinksAndPendingPayments();
+  }
+
+  @override
+  void dispose() {
+    _appLinksSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initAppLinksAndPendingPayments() async {
+    _appLinks = AppLinks();
+    
+    // Check initial deep link when app opens via link
+    try {
+      final initialUri = await _appLinks.getInitialLink();
+      if (initialUri != null) {
+        _handlePaymentDeepLink(initialUri);
+      }
+    } catch (_) {}
+
+    // Listen to deep links while running
+    _appLinksSub = _appLinks.uriLinkStream.listen((uri) {
+      _handlePaymentDeepLink(uri);
+    });
+
+    // Check for pending order recovery if app was killed/reopened during payment
+    _checkPendingPaymentStatus();
+  }
+
+  Future<void> _checkPendingPaymentStatus() async {
+    try {
+      final pendingOrderId = await PaymentService.getPendingOrderId();
+      if (pendingOrderId != null && pendingOrderId.isNotEmpty) {
+        final res = await PaymentService.checkPaymentStatus(pendingOrderId);
+        final String status = (res['paymentStatus'] ?? 'Pending').toString();
+        if (status != 'Pending') {
+          await PaymentService.clearPendingOrderId();
+          if (status == 'Paid') {
+            await CartService.clearCart();
+          }
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PaymentResultScreen(
+                  status: status,
+                  orderId: pendingOrderId,
+                  orderNumber: res['orderNumber'],
+                  amount: (res['amountToPay'] as num?)?.toDouble(),
+                ),
+              ),
+            );
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _handlePaymentDeepLink(Uri uri) async {
+    if (uri.scheme == 'fancyworld' || uri.toString().contains('payment-done')) {
+      final orderId = uri.queryParameters['order'] ?? uri.queryParameters['ref'] ?? await PaymentService.getPendingOrderId();
+      if (orderId != null && orderId.isNotEmpty) {
+        final res = await PaymentService.checkPaymentStatus(orderId);
+        final String status = (res['paymentStatus'] ?? 'Pending').toString();
+        await PaymentService.clearPendingOrderId();
+        if (status == 'Paid') {
+          await CartService.clearCart();
+        }
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PaymentResultScreen(
+                status: status,
+                orderId: orderId,
+                orderNumber: res['orderNumber'],
+                amount: (res['amountToPay'] as num?)?.toDouble(),
+              ),
+            ),
+          );
+        }
+      }
     }
   }
 

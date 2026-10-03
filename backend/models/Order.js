@@ -40,11 +40,13 @@ const orderSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ['Pending', 'Awaiting Verification', 'Paid', 'Failed', 'Refunded'],
+      enum: ['Pending', 'Awaiting Verification', 'Paid', 'Failed', 'Refunded', 'WRONG', 'Cancelled', 'Needs Review'],
       default: 'Pending',
     },
     upiTransactionId: { type: String },
     upiReferenceNo: { type: String },
+    paymentServerOrderId: { type: String },
+    amountToPay: { type: Number },
     paymentVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     paymentDetails: { type: Object },
 

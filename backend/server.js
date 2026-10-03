@@ -33,7 +33,12 @@ if (!MONGODB_URI) {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: '*' }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // Check DB Connection Middleware
@@ -156,6 +161,12 @@ app.get('/', (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 FancyWorld API online on port ${PORT}`);
+  try {
+    const { startPendingPaymentRetryJob } = require('./routes/payments');
+    startPendingPaymentRetryJob(app);
+  } catch (e) {
+    console.error('Failed to start retry job:', e.message);
+  }
 });
 
 app.set('io', io);
