@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
@@ -7,6 +8,7 @@ import '../services/user_service.dart';
 import '../services/upload_service.dart';
 import '../config/theme.dart';
 import '../widgets/gold_button.dart';
+import '../widgets/glass_toast.dart';
 import 'login_screen.dart';
 import 'address_screen.dart';
 import 'complaints_screen.dart';
@@ -96,13 +98,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Profile updated successfully'),
-            backgroundColor: AppTheme.success));
+        showGlassToast(context, 'Profile updated successfully', isError: false, title: 'PROFILE UPDATED');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        showGlassToast(context, 'Error updating profile: $e', isError: true);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -122,7 +122,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image upload failed: $e')));
+          showGlassToast(context, 'Image upload failed: $e', isError: true);
         }
       } finally {
         if (mounted) setState(() => _isLoading = false);
@@ -230,9 +230,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 label: 'UPDATE PASSWORD',
                 onPressed: () async {
                   if (newPass.text != confirmPass.text) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Passwords do not match'),
-                        backgroundColor: AppTheme.error));
+                    showGlassToast(ctx, 'Passwords do not match', isError: true, title: 'PASSWORD ERROR');
                     return;
                   }
                   if (currentPass.text.isEmpty || newPass.text.isEmpty) return;
@@ -245,15 +243,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       'newPassword': newPass.text
                     });
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Password updated successfully'),
-                          backgroundColor: AppTheme.success));
+                      showGlassToast(context, 'Password updated successfully', isError: false, title: 'PASSWORD UPDATED');
                     }
                   } catch (e) {
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text('Failed to update password: $e'),
-                          backgroundColor: AppTheme.error));
+                      showGlassToast(context, 'Failed to update password: $e', isError: true);
                     }
                   } finally {
                     if (mounted) setState(() => _isLoading = false);
@@ -348,10 +342,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildSectionTitle('PREFERENCES'),
                     const SizedBox(height: 12),
                     _buildMenuCard([
-                      _buildToggleTile('Notifications', _notificationEnabled, (v) {
-                        setState(() => _notificationEnabled = v);
-                        ApiService.put(
-                            '/auth/preferences', {'notificationEnabled': v});
+                      _buildToggleTile('Notifications', _notificationEnabled, (v) async {
+                        if (v) {
+                          var status = await Permission.notification.status;
+                          if (status.isDenied) {
+                            status = await Permission.notification.request();
+                          }
+                          if (status.isPermanentlyDenied) {
+                            if (mounted) {
+                              showGlassToast(context, 'Notification permissions are disabled in system settings.', isError: true, title: 'PERMISSIONS REQUIRED');
+                              await openAppSettings();
+                            }
+                            return;
+                          }
+                          if (status.isGranted) {
+                            setState(() => _notificationEnabled = true);
+                            await ApiService.put('/auth/preferences', {'notificationEnabled': true});
+                            if (mounted) {
+                              showGlassToast(context, 'Notifications enabled successfully.', isError: false, title: 'NOTIFICATIONS ON');
+                            }
+                          } else {
+                            if (mounted) {
+                              showGlassToast(context, 'Notification permission was not granted.', isError: true);
+                            }
+                          }
+                        } else {
+                          setState(() => _notificationEnabled = false);
+                          await ApiService.put('/auth/preferences', {'notificationEnabled': false});
+                          if (mounted) {
+                            showGlassToast(context, 'Notifications disabled.', isError: false, title: 'NOTIFICATIONS OFF');
+                          }
+                        }
                       }),
                     ]),
                     const SizedBox(height: 24),
