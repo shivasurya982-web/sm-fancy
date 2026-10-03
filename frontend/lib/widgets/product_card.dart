@@ -23,7 +23,7 @@ class _ProductCardState extends State<ProductCard> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
+    _animController = AnimationController(vsync: this, duration: const Duration(milliseconds: 150));
   }
 
   @override
@@ -201,6 +201,9 @@ class _ProductCardState extends State<ProductCard> with SingleTickerProviderStat
     return CachedNetworkImage(
       imageUrl: url,
       fit: BoxFit.cover,
+      fadeInDuration: const Duration(milliseconds: 100),
+      fadeOutDuration: const Duration(milliseconds: 100),
+      memCacheWidth: 400,
       placeholder: (context, url) => Container(color: Colors.white.withValues(alpha: 0.05)),
       errorWidget: (context, url, error) => Container(
         color: Colors.white.withValues(alpha: 0.05),

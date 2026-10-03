@@ -15,8 +15,9 @@ class ApiService {
   static String currentUserName = '';
   static String currentUserEmail = '';
 
-  static const Duration _timeout = Duration(seconds: 20);
+  static const Duration _timeout = Duration(seconds: 15);
   static String? _resolvedBaseUrl;
+  static final http.Client _client = http.Client();
 
   static Future<String> getActiveBaseUrl() async {
     if (_resolvedBaseUrl != null) return _resolvedBaseUrl!;
@@ -31,13 +32,13 @@ class ApiService {
       return _resolvedBaseUrl!;
     }
 
-    // 2. In Release Mode (Production Release APK), use Render Production Backend
+    // 2. In Release Mode, use Render Production Backend
     if (kReleaseMode) {
       _resolvedBaseUrl = _productionBaseUrl;
       return _resolvedBaseUrl!;
     }
 
-    // 3. Probing candidates: Probe local dev servers FIRST so local fixes take effect
+    // 3. Fast Parallel Probing of Dev/Local Candidates
     final candidates = [
       'http://127.0.0.1:5050/api',   // Local Dev / USB Reverse
       'http://localhost:5050/api',   // Localhost
@@ -46,21 +47,25 @@ class ApiService {
       _productionBaseUrl,            // Render Cloud Production
     ];
 
-    for (final candidate in candidates) {
-      try {
-        final res = await http
+    try {
+      final String winner = await Future.any(candidates.map((candidate) async {
+        final res = await _client
             .get(Uri.parse('$candidate/health'))
-            .timeout(const Duration(seconds: 3));
+            .timeout(const Duration(milliseconds: 1200));
         if (res.statusCode == 200) {
-          debugPrint('✅ ApiService connected to backend: $candidate');
-          _resolvedBaseUrl = candidate;
-          return _resolvedBaseUrl!;
+          return candidate;
         }
-      } catch (_) {}
-    }
+        throw 'Failed probe: $candidate';
+      }));
 
-    _resolvedBaseUrl = _productionBaseUrl;
-    return _resolvedBaseUrl!;
+      _resolvedBaseUrl = winner;
+      debugPrint('✅ ApiService connected to backend: $_resolvedBaseUrl');
+      return _resolvedBaseUrl!;
+    } catch (_) {
+      // Fallback to production if all fast probes fail
+      _resolvedBaseUrl = _productionBaseUrl;
+      return _resolvedBaseUrl!;
+    }
   }
 
   static String get baseUrl => _resolvedBaseUrl ?? _productionBaseUrl;
@@ -118,9 +123,8 @@ class ApiService {
     
     final activeBase = await getActiveBaseUrl();
     final url = '$activeBase$endpoint';
-    debugPrint('API GET Request: $url');
     try {
-      final response = await http.get(Uri.parse(url), headers: await _headers()).timeout(_timeout);
+      final response = await _client.get(Uri.parse(url), headers: await _headers()).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
       if (retries > 0 && _isNetworkError(e)) return get(endpoint, retries: retries - 1);
@@ -131,9 +135,8 @@ class ApiService {
   static Future<dynamic> post(String endpoint, Map<String, dynamic> body, {int retries = 0}) async {
     final activeBase = await getActiveBaseUrl();
     final url = '$activeBase$endpoint';
-    debugPrint('API POST Request: $url');
     try {
-      final response = await http.post(Uri.parse(url), headers: await _headers(), body: jsonEncode(body)).timeout(_timeout);
+      final response = await _client.post(Uri.parse(url), headers: await _headers(), body: jsonEncode(body)).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
       if (retries > 0 && _isNetworkError(e)) return post(endpoint, body, retries: retries - 1);
@@ -144,7 +147,7 @@ class ApiService {
   static Future<dynamic> put(String endpoint, Map<String, dynamic> body) async {
     final activeBase = await getActiveBaseUrl();
     try {
-      final response = await http.put(Uri.parse('$activeBase$endpoint'), headers: await _headers(), body: jsonEncode(body)).timeout(_timeout);
+      final response = await _client.put(Uri.parse('$activeBase$endpoint'), headers: await _headers(), body: jsonEncode(body)).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
       _handleError(e, 'PUT $endpoint');
@@ -154,7 +157,7 @@ class ApiService {
   static Future<dynamic> delete(String endpoint) async {
     final activeBase = await getActiveBaseUrl();
     try {
-      final response = await http.delete(Uri.parse('$activeBase$endpoint'), headers: await _headers()).timeout(_timeout);
+      final response = await _client.delete(Uri.parse('$activeBase$endpoint'), headers: await _headers()).timeout(_timeout);
       return _handleResponse(response);
     } catch (e) {
       _handleError(e, 'DELETE $endpoint');

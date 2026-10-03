@@ -8,7 +8,7 @@ const { upload, uploadToCloudinary, deleteFromCloudinary } = require('../middlew
 router.get('/', optionalAuth, async (req, res) => {
   try {
     const {
-      category, search, sort = 'newest', page = 1, limit = 20,
+      category, search, sort = 'newest', page = 1, limit = 30,
       isFeatured, isNewArrival, isTrending, isFlashSale, minPrice, maxPrice,
       excludeId,
     } = req.query;
@@ -17,7 +17,6 @@ router.get('/', optionalAuth, async (req, res) => {
     if (category && category !== 'All') query.category = category;
     if (excludeId) query._id = { $ne: excludeId };
     if (search) {
-      // Use text search for relevance ranking
       query.$text = { $search: search };
     }
     if (isFeatured === 'true') query.isFeatured = true;
@@ -36,17 +35,18 @@ router.get('/', optionalAuth, async (req, res) => {
       oldest: { createdAt: 1 },
       'price-asc': { price: 1 },
       'price-desc': { price: -1 },
-      rating: { rating: -1 },
+      rating: { averageRating: -1 },
     };
 
     const products = await Product.find(query, search ? { score: { $meta: 'textScore' } } : {})
       .sort(search && !req.query.sort ? sortMap.relevance : (sortMap[sort] || { createdAt: -1 }))
-      .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .skip((page - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
 
     const total = await Product.countDocuments(query);
 
-    res.json({ products, total, page: Number(page), pages: Math.ceil(total / limit) });
+    res.json({ products, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -55,7 +55,7 @@ router.get('/', optionalAuth, async (req, res) => {
 // GET /api/products/:id - Single product
 router.get('/:id', async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).lean();
     if (!product) return res.status(404).json({ message: 'Product not found' });
     res.json(product);
   } catch (err) {
