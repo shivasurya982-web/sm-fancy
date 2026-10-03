@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LocalNotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -53,6 +54,14 @@ class LocalNotificationService {
     required String body,
   }) async {
     if (kIsWeb) return;
+
+    // Check user preference in SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final bool isEnabled = prefs.getBool('notificationEnabled') ?? true;
+    if (!isEnabled) {
+      debugPrint('LocalNotificationService: Suppressed notification because user turned off notifications in app settings.');
+      return;
+    }
 
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
