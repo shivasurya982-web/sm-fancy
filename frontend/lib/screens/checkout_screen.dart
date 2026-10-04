@@ -323,17 +323,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
     );
   }
-                    }
-                  }
-                },
-                child: const Text('CHECK AGAIN'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
 
   // --- COD Logic ---
 
