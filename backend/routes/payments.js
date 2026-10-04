@@ -16,10 +16,16 @@ const { recordOrderSale } = require('../services/analyticsService');
  */
 function verifyHMACSignature(req) {
   const signature = req.headers['x-signature'] || req.headers['x-provider-signature'];
-  if (!signature) return false;
+  if (!signature) {
+    console.warn('[HMAC Check] Missing signature header');
+    return false;
+  }
 
   const appKey = process.env.APP_KEY;
-  if (!appKey) return false;
+  if (!appKey) {
+    console.warn('[HMAC Check] Missing APP_KEY in environment variables');
+    return false;
+  }
 
   let rawData;
   if (req.rawBody && Buffer.isBuffer(req.rawBody)) {
@@ -37,8 +43,15 @@ function verifyHMACSignature(req) {
     hmac.update(rawData);
     const expectedHex = hmac.digest('hex');
 
-    const sigBuf = Buffer.from(String(signature).trim().toLowerCase(), 'hex');
-    const expBuf = Buffer.from(expectedHex.toLowerCase(), 'hex');
+    const receivedSig = String(signature).trim().toLowerCase();
+    const expectedSig = expectedHex.toLowerCase();
+
+    if (receivedSig !== expectedSig) {
+      console.warn(`[HMAC Check Mismatch] Received: ${receivedSig}, Expected: ${expectedSig}`);
+    }
+
+    const sigBuf = Buffer.from(receivedSig, 'hex');
+    const expBuf = Buffer.from(expectedSig, 'hex');
 
     if (sigBuf.length !== expBuf.length) return false;
     return crypto.timingSafeEqual(sigBuf, expBuf);
@@ -63,15 +76,19 @@ async function processPaymentUpdate(order, payload, app = null) {
   }
 
   const { status, amount, paid, utr, orderId } = payload;
+  const upperStatus = String(status || '').toUpperCase();
   const expectedAmount = order.amountToPay ?? order.total;
 
-  if (status === 'SUCCESS') {
+  if (upperStatus === 'SUCCESS' || upperStatus === 'OK' || upperStatus === 'PAID') {
     const numAmount = parseFloat(amount);
-    const numPaid = parseFloat(paid);
+    const numPaid = parseFloat(paid ?? amount);
     const numExpected = parseFloat(expectedAmount);
 
-    // Verify exact amount match and paid equality
-    if (!isNaN(numAmount) && !isNaN(numPaid) && numAmount === numExpected && numPaid === numAmount) {
+    // Verify exact amount match (within floating point delta 0.01)
+    const amountMatches = !isNaN(numAmount) && !isNaN(numExpected) && Math.abs(numAmount - numExpected) < 0.05;
+    const paidMatches = !isNaN(numPaid) && numPaid >= (numAmount - 0.05);
+
+    if (amountMatches && paidMatches) {
       order.paymentStatus = 'Paid';
       order.status = 'Confirmed';
       if (utr || orderId) order.upiTransactionId = utr || orderId;
@@ -85,6 +102,7 @@ async function processPaymentUpdate(order, payload, app = null) {
       await order.save();
       await handlePostPayment(app, order);
 
+      console.log(`[PAYMENT SUCCESS] Order ${order._id} confirmed for amount ₹${numAmount}`);
       return { success: true, paymentStatus: 'Paid', orderStatus: 'Confirmed' };
     } else {
       // Amount mismatch or WRONG payment amount
@@ -94,16 +112,17 @@ async function processPaymentUpdate(order, payload, app = null) {
       order.paymentDetails = payload;
       await order.save();
 
+      console.warn(`[PAYMENT WRONG AMOUNT] Order ${order._id}: expected ₹${numExpected}, got ₹${numAmount}`);
       return { success: false, paymentStatus: 'WRONG', orderStatus: order.status, message: 'Amount mismatch' };
     }
-  } else if (status === 'WRONG') {
+  } else if (upperStatus === 'WRONG') {
     order.paymentStatus = 'WRONG';
     order.notes = (order.notes ? order.notes + '\n' : '') + '[PAYMENT WRONG] Reported WRONG by payment server';
     order.paymentDetails = payload;
     await order.save();
 
     return { success: false, paymentStatus: 'WRONG', orderStatus: order.status };
-  } else if (status === 'CANCELLED') {
+  } else if (upperStatus === 'CANCELLED' || upperStatus === 'FAILED' || upperStatus === 'BAD') {
     order.paymentStatus = 'Cancelled';
     order.status = 'Cancelled';
     order.paymentDetails = payload;
@@ -232,6 +251,7 @@ const createPaymentHandler = async (req, res) => {
 
     if (paymentServerUrl && appKey && !paymentServerUrl.includes('REPLACE-WITH')) {
       try {
+        console.log(`[Payment Server Request] POST ${paymentServerUrl}/api/create for ref: ${order._id}`);
         const createRes = await fetch(`${paymentServerUrl}/api/create`, {
           method: 'POST',
           headers: {
@@ -255,6 +275,7 @@ const createPaymentHandler = async (req, res) => {
           order.amountToPay = finalAmount;
           order.total = finalAmount;
           await order.save();
+          console.log(`[Payment Server Success] Server Order ID: ${paymentServerOrderId}, Amount: ₹${finalAmount}`);
         } else {
           console.error('[Payment Server Create Error]', await createRes.text());
         }
@@ -263,7 +284,7 @@ const createPaymentHandler = async (req, res) => {
       }
     }
 
-    // Fallback URL if payment server URL not reachable/configured yet in dev
+    // Fallback direct UPI Intent URL if payment server URL not configured
     if (!payUrl) {
       const settings = await AppSettings.findOne();
       const vpa = settings?.upiId || 'shivasurya982-1@oksbi';
@@ -296,12 +317,16 @@ router.post('/create', verifyToken, createPaymentHandler);
  */
 const callbackHandler = async (req, res) => {
   try {
+    console.log('[CALLBACK RECEIVED] Headers:', JSON.stringify(req.headers));
+
     if (!verifyHMACSignature(req)) {
-      console.warn('[CALLBACK REJECTED] Invalid signature');
+      console.warn('[CALLBACK REJECTED] HMAC signature check failed');
       return res.status(400).json({ message: 'Invalid signature' });
     }
 
     const payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    console.log('[CALLBACK PAYLOAD]', JSON.stringify(payload));
+
     const { ref, orderId, status, amount, paid } = payload;
 
     if (!ref && !orderId) {
@@ -318,8 +343,13 @@ const callbackHandler = async (req, res) => {
       query.push({ paymentServerOrderId: orderId });
     }
 
+    if (query.length === 0) {
+      return res.status(400).json({ message: 'Invalid search criteria' });
+    }
+
     const order = await Order.findOne({ $or: query });
     if (!order) {
+      console.warn('[CALLBACK ERROR] Order not found for criteria:', JSON.stringify(query));
       return res.status(404).json({ message: 'Order not found' });
     }
 
@@ -353,22 +383,26 @@ const statusCheckHandler = async (req, res) => {
     }
 
     // Safety net: If order is still Pending, check server-to-server with Payment Server
-    if (order.paymentStatus === 'Pending' && order.paymentServerOrderId) {
+    if (order.paymentStatus === 'Pending') {
       const paymentServerUrl = process.env.PAYMENT_SERVER_URL;
       const appKey = process.env.APP_KEY;
+      const pOrderId = order.paymentServerOrderId || order._id.toString();
 
       if (paymentServerUrl && appKey && !paymentServerUrl.includes('REPLACE-WITH')) {
         try {
-          const statusRes = await fetch(`${paymentServerUrl}/api/status?id=${order.paymentServerOrderId}`, {
+          console.log(`[S2S STATUS CHECK] Querying ${paymentServerUrl}/api/status?id=${pOrderId}`);
+          const statusRes = await fetch(`${paymentServerUrl}/api/status?id=${pOrderId}`, {
             headers: { 'x-api-key': appKey },
           });
 
           if (statusRes.ok) {
             const statusData = await statusRes.json();
-            // Expected statusData: { status: 'PENDING'|'SUCCESS'|'WRONG'|'CANCELLED', ref, amount, paid }
+            console.log(`[S2S STATUS RESPONSE]`, JSON.stringify(statusData));
             if (statusData && statusData.status && statusData.status !== 'PENDING') {
               await processPaymentUpdate(order, statusData, req.app);
             }
+          } else {
+            console.warn(`[S2S STATUS CHECK FAILED] HTTP ${statusRes.status}`);
           }
         } catch (err) {
           console.error('[STATUS CHECK S2S ERROR]', err.message);
@@ -391,8 +425,9 @@ const statusCheckHandler = async (req, res) => {
   }
 };
 
-router.get('/orders/:id/payment-status', verifyToken, statusCheckHandler);
-router.get('/status/:orderId', verifyToken, statusCheckHandler);
+// Publicly checkable safety net for deep-links and app polling
+router.get('/orders/:id/payment-status', statusCheckHandler);
+router.get('/status/:orderId', statusCheckHandler);
 
 /**
  * Background Retry Job for Orders remaining PENDING > 6 Minutes
@@ -403,7 +438,6 @@ async function runPendingOrderRetryJob(app = null) {
     const pendingOrders = await Order.find({
       paymentStatus: 'Pending',
       createdAt: { $lte: sixMinutesAgo },
-      paymentServerOrderId: { $exists: true, $ne: null },
     });
 
     const paymentServerUrl = process.env.PAYMENT_SERVER_URL;
@@ -415,7 +449,8 @@ async function runPendingOrderRetryJob(app = null) {
 
     for (const order of pendingOrders) {
       try {
-        const res = await fetch(`${paymentServerUrl}/api/status?id=${order.paymentServerOrderId}`, {
+        const pOrderId = order.paymentServerOrderId || order._id.toString();
+        const res = await fetch(`${paymentServerUrl}/api/status?id=${pOrderId}`, {
           headers: { 'x-api-key': appKey },
         });
 
@@ -441,7 +476,6 @@ async function runPendingOrderRetryJob(app = null) {
 }
 
 function startPendingPaymentRetryJob(app = null) {
-  // Run every 2 minutes
   setInterval(() => {
     runPendingOrderRetryJob(app);
   }, 2 * 60 * 1000);

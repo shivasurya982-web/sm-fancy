@@ -195,7 +195,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32), side: const BorderSide(color: AppTheme.glassBorder)),
             title: const Center(
               child: Text(
-                'CHECKING PAYMENT...',
+                'PAYMENT IN PROGRESS',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppTheme.polishedSilver, letterSpacing: 2),
               ),
             ),
@@ -203,8 +203,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('₹${amount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
-                  const SizedBox(height: 20),
+                  Text('₹${amount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white)),
+                  const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
@@ -217,12 +217,46 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brushedPlatinum),
-                  const SizedBox(height: 12),
+                  
+                  // Button to directly launch UPI App on the same device
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.brushedPlatinum,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      ),
+                      icon: const Icon(Icons.account_balance_wallet_rounded, size: 18),
+                      label: const Text('PAY VIA UPI APP', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)),
+                      onPressed: () async {
+                        try {
+                          final uri = Uri.parse(payUrl);
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            showGlassToast(ctx, "Could not open UPI app. Please scan QR code with GPay/PhonePe.", isError: true);
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brushedPlatinum)),
+                      SizedBox(width: 8),
+                      Text('Waiting for payment confirmation...', style: TextStyle(color: AppTheme.coolGrey, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   const Text(
-                    'Complete payment in your browser or UPI app.\nWaiting for server confirmation...',
+                    'Scan QR with PhonePe, Google Pay or Paytm on another phone, or click "PAY VIA UPI APP" above.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: AppTheme.coolGrey, fontSize: 11),
+                    style: TextStyle(color: Colors.white38, fontSize: 9, height: 1.3),
                   ),
                 ],
               ),
@@ -277,7 +311,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     }
                   } else {
                     if (ctx.mounted) {
-                      showGlassToast(ctx, "Payment is still pending verification...", title: 'CHECKING STATUS');
+                      showGlassToast(ctx, "Still pending... Ensure CALLBACK_URL & APP_KEY match on Render server.", title: 'CHECKING STATUS');
+                    }
+                  }
+                },
+                child: const Text('CHECK AGAIN'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
                     }
                   }
                 },
